@@ -79,3 +79,14 @@ describe("finger", () => {
     for (const color of colors) expect(color).toMatch(/^#[0-9a-f]{6}$/i);
   });
 });
+
+describe("canadian french layout", () => {
+  const layout = loadLayout("canadian_french");
+
+  it("keeps the qwerty finger assignment", () => {
+    expect(charToFinger("é", layout)).toEqual("RP");
+    expect(charToFinger("ç", layout)).toEqual("LM");
+    expect(charToFinger("l", layout)).toEqual("RR");
+    expect(shiftFingerFor("É", layout)).toEqual("LP");
+  });
+});
