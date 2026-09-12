@@ -26,6 +26,11 @@ export function Captcha(props: {
   const [captchaRef, captchaEl] = useRefWithUtils<HTMLDivElement>();
 
   onMount(() => {
+    if (envConfig.recaptchaSiteKey === "") {
+      props.field().setValue("bypass");
+      props.onSuccess?.("bypass");
+      return;
+    }
     const el = captchaEl() as ElementWithUtils<HTMLDivElement>;
 
     const grecaptcha = getGrecaptcha();

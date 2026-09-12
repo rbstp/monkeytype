@@ -10,7 +10,7 @@ type CaptchaData = {
 const recaptchaSecret = process.env["RECAPTCHA_SECRET"] ?? null;
 
 export async function verify(captcha: string): Promise<boolean> {
-  if (isDevEnvironment()) {
+  if (isDevEnvironment() || process.env["BYPASS_CAPTCHA"] === "true") {
     return true;
   }
 

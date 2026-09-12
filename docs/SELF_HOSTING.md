@@ -207,6 +207,27 @@ EMAIL_PORT=465             # port, likely 465 or 587
 EMAIL_FROM="Support <noreply@myserver>"
 ```
 
+## Local account without Firebase
+
+For a private instance you can run the Firebase Auth emulator instead of a real Firebase project. Accounts then live in a docker volume on your machine.
+
+- build the images from this repository (see `docker/BUILD.md`), the upstream images do not include emulator support
+- in `.env` set:
+  ```
+  COMPOSE_PROFILES=emulator
+  BYPASS_CAPTCHA=true
+  RECAPTCHA_SITE_KEY=
+  FIREBASE_APIKEY=fake-api-key
+  FIREBASE_AUTHDOMAIN=localhost
+  FIREBASE_PROJECTID=demo-monkeytype
+  FIREBASE_AUTH_EMULATOR_HOST=http://localhost:9099
+  BACKEND_FIREBASE_AUTH_EMULATOR_HOST=monkeytype-firebase:9099
+  ```
+- set `users.signUp` to `true` in `backend-configuration.json`
+- run `docker compose up -d --build`
+
+The browser talks to the emulator on port 9099, so keep that port reachable from where you open the site. Emails are never sent, so password reset and email verification are unavailable.
+
 ## Enable daily leaderboards
 
 To enable daily leaderboards update the `backend-configuration.json` file and add/modify

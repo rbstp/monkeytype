@@ -11,6 +11,17 @@ const SERVICE_ACCOUNT_PATH = path.join(
 );
 
 export function init(): void {
+  const emulatorHost = process.env["FIREBASE_AUTH_EMULATOR_HOST"];
+  if (emulatorHost !== undefined && emulatorHost !== "") {
+    admin.initializeApp({
+      projectId: process.env["FIREBASE_PROJECT_ID"] ?? "demo-monkeytype",
+    });
+    Logger.warning(
+      `Firebase app initialized against auth emulator ${emulatorHost}`,
+    );
+    return;
+  }
+
   if (!existsSync(SERVICE_ACCOUNT_PATH)) {
     if (isDevEnvironment()) {
       Logger.warning(

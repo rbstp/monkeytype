@@ -11,3 +11,5 @@ export const firebaseConfig = {
   messagingSenderId: "###FIREBASE_MESSAGINGSENDERID###",
   appId: "###FIREBASE_APPID###",
 };
+
+export const authEmulatorHost = "###FIREBASE_AUTH_EMULATOR_HOST###";

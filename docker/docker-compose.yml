@@ -63,6 +63,7 @@ services:
       - FIREBASE_STORAGEBUCKET=${FIREBASE_STORAGEBUCKET:-}
       - FIREBASE_MESSAGINGSENDERID=${FIREBASE_MESSAGINGSENDERID:-}
       - FIREBASE_APPID=${FIREBASE_APPID:-}
+      - FIREBASE_AUTH_EMULATOR_HOST=${FIREBASE_AUTH_EMULATOR_HOST:-}
       - MONKEYTYPE_BACKENDURL=${BASE_URL:-http://localhost}/api
       - RECAPTCHA_SITE_KEY=${RECAPTCHA_SITE_KEY:-}
     healthcheck:
@@ -88,6 +89,9 @@ services:
       - REDIS_URI=redis://monkeytype-redis:6379
       - FRONTEND_URL=${BASE_URL:-http://localhost}
       - RECAPTCHA_SECRET=${RECAPTCHA_SECRET:-}
+      - BYPASS_CAPTCHA=${BYPASS_CAPTCHA:-false}
+      - FIREBASE_AUTH_EMULATOR_HOST=${BACKEND_FIREBASE_AUTH_EMULATOR_HOST:-}
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECTID:-}
       - EMAIL_HOST=${EMAIL_HOST:-}
       - EMAIL_PORT=${EMAIL_PORT:-}
       - EMAIL_USER=${EMAIL_USER:-}
@@ -124,6 +128,29 @@ services:
       - "traefik.http.services.backend.loadbalancer.server.port=5005"
       - "traefik.enable=true"
       - "traefik.docker.network=monkeytype-public"
+
+  # local stand-in for Firebase auth, see SELF_HOSTING.md
+  monkeytype-firebase:
+    container_name: monkeytype-firebase
+    build: ./firebase
+    profiles:
+      - emulator
+    restart: on-failure
+    stop_grace_period: 30s
+    ports:
+      - "9099:9099"
+    networks:
+      - public
+    environment:
+      - FIREBASE_PROJECTID=${FIREBASE_PROJECTID:-demo-monkeytype}
+    volumes:
+      - firebase-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9099/"]
+      interval: 5s
+      timeout: 10s
+      retries: 15
+      start_period: 10s
 
   monkeytype-redis:
     container_name: monkeytype-redis
@@ -170,6 +197,8 @@ volumes:
     name: monkeytype_mongo_data
   redis-data:
     name: monkeytype_redis_data
+  firebase-data:
+    name: monkeytype_firebase_data
 
 networks:
   isolated:

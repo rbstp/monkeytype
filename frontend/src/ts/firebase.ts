@@ -16,6 +16,7 @@ import {
   signInWithPopup as firebaseSignInWithPopup,
   createUserWithEmailAndPassword as firebaseCreateUserWithEmailAndPassword,
   getIdToken as firebaseGetIdToken,
+  connectAuthEmulator,
   UserCredential,
   AuthProvider,
   onAuthStateChanged,
@@ -51,17 +52,18 @@ const { promise: authPromise, resolve: resolveAuthPromise } =
 
 export async function init(callback: ReadyCallback): Promise<void> {
   try {
-    let firebaseConfig: FirebaseOptions | null;
-
-    firebaseConfig = (
+    const { firebaseConfig, authEmulatorHost } =
       (await import("./constants/firebase-config")) as {
         firebaseConfig: FirebaseOptions;
-      }
-    ).firebaseConfig;
+        authEmulatorHost?: string;
+      };
 
     readyCallback = callback;
     app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     Auth = getAuth(app);
+    if (authEmulatorHost !== undefined && authEmulatorHost !== "") {
+      connectAuthEmulator(Auth, authEmulatorHost, { disableWarnings: true });
+    }
 
     const rememberMe =
       window.localStorage.getItem("firebasePersistence") === "LOCAL";
