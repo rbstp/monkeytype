@@ -1,5 +1,11 @@
 import { KeymapStyle } from "@monkeytype/schemas/configs";
 import { KeyLegends, LayoutObject } from "@monkeytype/schemas/layouts";
+import { Keycode } from "../../../constants/keys";
+import { Finger, HOME_KEYS, keycodeToFinger } from "../../../trainer/finger";
+import {
+  LAYOUT_ROWS,
+  layoutPositionToKeycode,
+} from "../../../utils/key-converter";
 
 import {
   KeyboardDefinition,
@@ -27,13 +33,37 @@ export function convertLayoutToKeymap(
 
   return convert({
     legends: layout.keys,
+    layoutType: layout.type,
     keymap: keymapLayout,
     convertOptions: options,
   });
 }
 
+function keycodeFor(
+  keyDef: KeymapLayout[number][number],
+  layoutType: LayoutObject["type"],
+): Keycode | undefined {
+  const position = keyDef.layoutPosition;
+  if (position?.row === undefined) return undefined;
+  return layoutPositionToKeycode(
+    LAYOUT_ROWS.indexOf(position.row),
+    position.col,
+    layoutType,
+  );
+}
+
+function fingerFor(
+  keyDef: KeymapLayout[number][number],
+  keycode: Keycode | undefined,
+): Finger | undefined {
+  if (keyDef.finger !== undefined) return keyDef.finger;
+  if (keyDef.isLayoutIndicator) return "thumb";
+  return keycode === undefined ? undefined : keycodeToFinger[keycode];
+}
+
 function convert(options: {
   legends: LayoutObject["keys"];
+  layoutType: LayoutObject["type"];
   keymap: KeymapLayout;
   convertOptions: ConvertOptions;
 }): KeyboardDefinition {
@@ -60,6 +90,9 @@ function convert(options: {
           ...keyDef,
           ...(isShowAllKeys ? keyDef.extraKeysOverride : {}),
         };
+        const keycode = keycodeFor(keyDef, options.layoutType);
+        const finger = fingerFor(keyDef, keycode);
+        const isHomeKey = keycode !== undefined && HOME_KEYS.includes(keycode);
 
         return {
           legends,
@@ -72,6 +105,8 @@ function convert(options: {
             ? { isLayoutIndicator: true }
             : {}),
           ...(final.isHoming === true ? { isHoming: true } : {}),
+          ...(finger !== undefined ? { finger } : {}),
+          ...(isHomeKey ? { isHomeKey: true } : {}),
           ...(final.align !== undefined ? { align: final.align } : {}),
         } satisfies KeyDefinition;
       })

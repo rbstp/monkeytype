@@ -459,6 +459,16 @@ describe("Config", () => {
       expect(config.minWpmCustomSpeed).toEqual(100);
     });
 
+    it("should keep the keymap off when applying keymapFingerColors", async () => {
+      replaceConfig({});
+      await Lifecycle.applyConfig({
+        keymapFingerColors: "shades",
+      });
+      const config = getConfig();
+      expect(config.keymapFingerColors).toEqual("shades");
+      expect(config.keymapMode).toEqual("off");
+    });
+
     it("should keep the keymap off when applying keymapLayout", async () => {
       replaceConfig({});
       await Lifecycle.applyConfig({

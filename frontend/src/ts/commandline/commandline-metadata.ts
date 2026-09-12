@@ -682,6 +682,12 @@ export const commandlineConfigMetadata: CommandlineConfigMetadataObject = {
     },
     alias: "keyboard",
   },
+  keymapFingerColors: {
+    subgroup: {
+      options: "fromSchema",
+    },
+    alias: "keyboard finger hand",
+  },
 
   //themes
   customTheme: {

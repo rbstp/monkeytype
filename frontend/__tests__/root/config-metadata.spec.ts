@@ -98,6 +98,18 @@ describe("ConfigMeta", () => {
           expected: { customPolyglot: ["english", "polish"] },
         },
       ],
+      keymapFingerColors: [
+        {
+          value: "shades",
+          given: { keymapMode: "react" },
+          expected: { keymapMode: "react" },
+        },
+        {
+          value: "shades",
+          given: { keymapMode: "off" },
+          expected: { keymapMode: "static" },
+        },
+      ],
       keymapSize: [
         { value: 1, expected: { keymapSize: 1 } },
         { value: 1.234, expected: { keymapSize: 1.2 } },

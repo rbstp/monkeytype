@@ -112,6 +112,7 @@ export const KeymapStyleSchema = z.enum([
   "split_matrix",
   "steno",
   "steno_matrix",
+  "mq80",
 ]);
 export type KeymapStyle = z.infer<typeof KeymapStyleSchema>;
 
@@ -129,6 +130,9 @@ export const KeymapKeysSchema = z.enum([
   "full", //include extra keys
 ]);
 export type KeymapKeys = z.infer<typeof KeymapKeysSchema>;
+
+export const KeymapFingerColorsSchema = z.enum(["off", "shades"]);
+export type KeymapFingerColors = z.infer<typeof KeymapFingerColorsSchema>;
 
 export const KeymapSizeSchema = z.number().min(0.5).max(3.5).step(0.1);
 export type KeymapSize = z.infer<typeof KeymapSizeSchema>;
@@ -486,6 +490,7 @@ export const ConfigSchema = z
     keymapLegendStyle: KeymapLegendStyleSchema,
     keymapKeys: KeymapKeysSchema,
     keymapSize: KeymapSizeSchema,
+    keymapFingerColors: KeymapFingerColorsSchema,
 
     // theme
     flipTestColors: z.boolean(),

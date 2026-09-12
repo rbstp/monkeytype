@@ -4,6 +4,7 @@ import {
   FormatDisplayOptions,
   formatForDisplay,
 } from "@tanstack/solid-hotkeys";
+import { Finger } from "../../../trainer/finger";
 import { OneOf } from "../../../utils/types";
 
 const options: FormatDisplayOptions = {};
@@ -32,6 +33,8 @@ export type KeyDefinition = {
   rotation?: number;
   isLayoutIndicator?: boolean;
   isHoming?: boolean;
+  finger?: Finger;
+  isHomeKey?: boolean;
   align?: "top";
 };
 export type KeyboardDefinition = KeyDefinition[][];
@@ -95,10 +98,10 @@ const staggeredAnsi: KeymapLayout = [
     { legend: Enter, width: 2.25, isExtraKey: true },
   ]),
   buildRow("row4", [
-    { legend: Shift, width: 2.25, isExtraKey: true },
+    { legend: Shift, width: 2.25, isExtraKey: true, finger: "LP" },
     { layoutPosition: { col: 0 }, x: 1.5, extraKeysOverride: { x: 0 } },
     ...addLayoutKeys(9, { start: 1 }),
-    { legend: Shift, width: 2.75, isExtraKey: true },
+    { legend: Shift, width: 2.75, isExtraKey: true, finger: "RP" },
   ]),
   staggeredBottomRow,
 ];
@@ -131,10 +134,10 @@ const staggeredIso: KeymapLayout = [
     { layoutPosition: { col: 11 } },
   ]),
   buildRow("row4", [
-    { legend: Shift, width: 1.25, isExtraKey: true },
+    { legend: Shift, width: 1.25, isExtraKey: true, finger: "LP" },
     { layoutPosition: { col: 0 }, x: 0.25, extraKeysOverride: { x: 0 } },
     ...addLayoutKeys(10, { start: 1 }),
-    { legend: Shift, width: 2.75, isExtraKey: true },
+    { legend: Shift, width: 2.75, isExtraKey: true, finger: "RP" },
   ]),
   staggeredBottomRow,
 ];
@@ -373,7 +376,7 @@ const alice: KeymapLayout = [
     { legend: Enter, width: 2.25, isExtraKey: true },
   ]),
   buildRow("row4", [
-    { legend: Shift, width: 2.25, isExtraKey: true, x: 1 },
+    { legend: Shift, width: 2.25, isExtraKey: true, x: 1, finger: "LP" },
     { layoutPosition: { col: 0 }, x: 0.45, extraKeysOverride: { x: 0 } },
     { layoutPosition: { col: 1 }, rotation: 10, y: 0.25 },
     { layoutPosition: { col: 2 }, rotation: 10, y: 0.45 },
@@ -385,7 +388,7 @@ const alice: KeymapLayout = [
     { layoutPosition: { col: 7 }, rotation: -10, y: 0.2 },
     { layoutPosition: { col: 8 } },
     { layoutPosition: { col: 9 } },
-    { legend: Shift, width: 1.75, isExtraKey: true },
+    { legend: Shift, width: 1.75, isExtraKey: true, finger: "RP" },
     { legend: "fn", isExtraKey: true },
   ]),
   aliceBottomRow,
@@ -443,7 +446,7 @@ const aliceIso: KeymapLayout = [
     { layoutPosition: { col: 11 } },
   ]),
   buildRow("row4", [
-    { legend: Shift, width: 1.25, isExtraKey: true, x: 1 },
+    { legend: Shift, width: 1.25, isExtraKey: true, x: 1, finger: "LP" },
     { layoutPosition: { col: 0 }, isExtraKey: true },
     { layoutPosition: { col: 1 }, x: 0.45, extraKeysOverride: { x: 0 } },
     { layoutPosition: { col: 2 }, rotation: 10, y: 0.25 },
@@ -457,11 +460,70 @@ const aliceIso: KeymapLayout = [
     { layoutPosition: { col: 9 } },
     { layoutPosition: { col: 10 } },
 
-    { legend: Shift, width: 1.75, isExtraKey: true },
+    { legend: Shift, width: 1.75, isExtraKey: true, finger: "RP" },
     { legend: "fn", isExtraKey: true },
   ]),
   aliceBottomRow,
 ];
+const mq80NavGap = 0.25;
+
+const mq80: KeymapLayout = [
+  buildRow("row1", [
+    { layoutPosition: { col: 0 }, isExtraKey: true },
+    ...addLayoutKeys(12, { start: 1 }),
+    { legend: "Backspace", width: 2, isExtraKey: true },
+    { legend: "Home", isExtraKey: true, x: mq80NavGap },
+  ]),
+  buildRow("row2", [
+    { legend: "Tab", width: 1.5, isExtraKey: true },
+    { layoutPosition: { col: 0 }, x: 0.5, extraKeysOverride: { x: 0 } },
+    ...addLayoutKeys(11, { start: 1 }),
+    { layoutPosition: { col: 12 }, width: 1.5, isExtraKey: true },
+    { legend: "End", isExtraKey: true, x: mq80NavGap },
+  ]),
+  buildRow("row3", [
+    { legend: "Caps", width: 1.75, isExtraKey: true },
+    { layoutPosition: { col: 0 }, x: 1, extraKeysOverride: { x: 0 } },
+    { layoutPosition: { col: 1 } },
+    { layoutPosition: { col: 2 } },
+    { layoutPosition: { col: 3 }, isHoming: true },
+    { layoutPosition: { col: 4 } },
+    { layoutPosition: { col: 5 } },
+    { layoutPosition: { col: 6 }, isHoming: true },
+    { layoutPosition: { col: 7 } },
+    { layoutPosition: { col: 8 } },
+    { layoutPosition: { col: 9 } },
+    { layoutPosition: { col: 10 } },
+    { legend: Enter, width: 2.25, isExtraKey: true },
+    { legend: "PgUp", isExtraKey: true, x: mq80NavGap },
+  ]),
+  buildRow("row4", [
+    { legend: Shift, width: 2.25, isExtraKey: true, finger: "LP" },
+    { layoutPosition: { col: 0 }, x: 1.5, extraKeysOverride: { x: 0 } },
+    ...addLayoutKeys(9, { start: 1 }),
+    { legend: Shift, width: 1.75, isExtraKey: true, finger: "RP" },
+    { legend: "↑", isExtraKey: true },
+    { legend: "PgDn", isExtraKey: true, x: mq80NavGap },
+  ]),
+  [
+    { legend: Ctrl, width: 1.25, isExtraKey: true },
+    { legend: Alt, width: 1.25, isExtraKey: true },
+    { legend: Meta, width: 1.25, isExtraKey: true },
+    {
+      isLayoutIndicator: true,
+      width: 6.25,
+      x: 3.5,
+      extraKeysOverride: { x: 0 },
+    },
+    { legend: Meta, isExtraKey: true },
+    { legend: "Fn", isExtraKey: true },
+    { legend: Alt, isExtraKey: true },
+    { legend: "←", isExtraKey: true },
+    { legend: "↓", isExtraKey: true },
+    { legend: "→", isExtraKey: true, x: mq80NavGap },
+  ],
+];
+
 export const keymapLayouts: Partial<
   Record<KeymapStyle, Partial<Record<LayoutObject["type"], KeymapLayout>>>
 > = {
@@ -475,6 +537,8 @@ export const keymapLayouts: Partial<
   split_matrix: { iso: splitMatrix, ansi: splitMatrix },
 
   alice: { iso: aliceIso, ansi: alice },
+
+  mq80: { ansi: mq80, iso: staggeredIso },
 };
 
 function buildRow(

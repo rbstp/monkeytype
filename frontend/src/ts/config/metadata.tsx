@@ -1024,6 +1024,16 @@ export const configMetadata: ConfigMetadataObject = {
     overrideConfig: ({ currentConfig }) =>
       currentConfig.keymapMode === "off" ? { keymapMode: "static" } : {},
   },
+  keymapFingerColors: {
+    key: "keymapFingerColors",
+    fa: { icon: "fa-hand-paper" },
+    displayString: "keymap finger colors",
+    changeRequiresRestart: false,
+    group: "appearance",
+    description: "Tints each key with the finger that should press it.",
+    overrideConfig: ({ currentConfig }) =>
+      currentConfig.keymapMode === "off" ? { keymapMode: "static" } : {},
+  },
   keymapSize: {
     key: "keymapSize",
     fa: { icon: "fa-keyboard" },

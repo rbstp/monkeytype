@@ -60,6 +60,7 @@ const obj: Config = {
   keymapLayout: "overrideSync",
   keymapKeys: "minimal",
   keymapSize: 1,
+  keymapFingerColors: "off",
   fontFamily: "Roboto_Mono",
   smoothLineScroll: false,
   alwaysShowDecimalPlaces: false,

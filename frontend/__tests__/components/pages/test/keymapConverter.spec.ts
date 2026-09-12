@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { convertLayoutToKeymap } from "../../../../src/ts/components/pages/test/keymapConverter";
+import { convertLayoutToKeymap as convertWithFingers } from "../../../../src/ts/components/pages/test/keymapConverter";
 
 import qwertyLayout from "../../../../static/layouts/qwerty.json";
 import qwertzLayout from "../../../../static/layouts/qwertz.json";
@@ -8,6 +8,7 @@ import { LayoutObject } from "@monkeytype/schemas/layouts";
 import {
   Alt,
   BackspaceShort,
+  KeyboardDefinition,
   Ctrl,
   EnterShort,
   Hyper,
@@ -15,6 +16,14 @@ import {
   Meta,
   Shift,
 } from "../../../../src/ts/components/pages/test/keymapLayouts";
+
+function convertLayoutToKeymap(
+  ...args: Parameters<typeof convertWithFingers>
+): KeyboardDefinition {
+  return convertWithFingers(...args).map((row) =>
+    row.map(({ finger: _finger, isHomeKey: _home, ...key }) => key),
+  );
+}
 
 function expectLegend(...legends: string[]): { legends: string[] } {
   if (legends.length === 1) {
@@ -103,6 +112,41 @@ describe("keymap converter", () => {
             x: 3.5,
             isLayoutIndicator: true,
           },
+        ]);
+      });
+
+      it("assigns fingers to positioned keys and the spacebar", () => {
+        const [, , row3, , row5] = convertWithFingers(
+          qwertyLayout as LayoutObject,
+          { keymapStyle: "staggered", showAllKeys: false },
+        );
+
+        expect(row3?.map((key) => key.finger)).toEqual([
+          "LP",
+          "LR",
+          "LM",
+          "LI",
+          "LI",
+          "RI",
+          "RI",
+          "RM",
+          "RR",
+          "RP",
+          "RP",
+        ]);
+        expect(row5?.[0]?.finger).toEqual("thumb");
+        expect(row3?.map((key) => key.isHomeKey === true)).toEqual([
+          true,
+          true,
+          true,
+          true,
+          false,
+          false,
+          true,
+          true,
+          true,
+          true,
+          false,
         ]);
       });
 

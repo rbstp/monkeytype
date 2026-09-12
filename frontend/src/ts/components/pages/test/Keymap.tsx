@@ -14,7 +14,15 @@ import {
   wordsHaveNumbers,
 } from "../../../states/test";
 import { getTheme } from "../../../states/theme";
+import {
+  charToFinger,
+  FINGER_LABEL,
+  fingerColors,
+  HOME_KEYS,
+  shiftFingerFor,
+} from "../../../trainer/finger";
 import { cn } from "../../../utils/cn";
+import { keycodeToLayoutKey } from "../../../utils/key-converter";
 import { isMacLike } from "../../../utils/misc";
 import { Anime } from "../../common/anime";
 import { Button } from "../../common/Button";
@@ -22,6 +30,9 @@ import { convertLayoutToKeymap } from "./keymapConverter";
 import { KeyboardDefinition, KeyDefinition } from "./keymapLayouts";
 
 const symbolsPattern = /^[^\p{L}\p{N}]{1}$/u;
+
+const isSteno = (): boolean =>
+  getConfig.keymapStyle === "steno" || getConfig.keymapStyle === "steno_matrix";
 
 export function Keymap() {
   return (
@@ -84,6 +95,32 @@ function Keyboard(props: { displayName: string; layoutData: LayoutObject }) {
     }),
   );
 
+  const nextFingerLabel = createMemo(() => {
+    if (
+      getConfig.keymapMode !== "next" ||
+      getConfig.keymapFingerColors === "off" ||
+      isSteno()
+    ) {
+      return undefined;
+    }
+    const next = getKeymapHighlightKey();
+    if (next === undefined) return undefined;
+    const finger = charToFinger(next, props.layoutData);
+    if (finger === undefined) return undefined;
+    const shift = shiftFingerFor(next, props.layoutData);
+    return shift === undefined
+      ? FINGER_LABEL[finger]
+      : `${FINGER_LABEL[finger]} + ${FINGER_LABEL[shift]} shift`;
+  });
+
+  const restLabel = createMemo(() => {
+    if (getConfig.keymapFingerColors === "off" || isSteno()) return undefined;
+    const legends = HOME_KEYS.map(
+      (keycode) => keycodeToLayoutKey(keycode, props.layoutData) ?? "?",
+    );
+    return `rest: ${legends.slice(0, 4).join(" ")}   ${legends.slice(4).join(" ")}   thumbs on space`;
+  });
+
   return (
     <div
       data-ui-element="keymap"
@@ -96,6 +133,12 @@ function Keyboard(props: { displayName: string; layoutData: LayoutObject }) {
           showFirstRow={showFirstRow()}
           flashState={getKeymapFlashState}
         />
+      </Show>
+      <Show when={restLabel()}>
+        <div class="pt-2 text-xs whitespace-pre text-sub">{restLabel()}</div>
+      </Show>
+      <Show when={nextFingerLabel()}>
+        <div class="pt-1 text-xs text-sub">{nextFingerLabel()}</div>
       </Show>
     </div>
   );
@@ -166,10 +209,6 @@ function Key(
     flashEntry: () => FlashEntry | undefined;
   } & KeyDefinition,
 ) {
-  const isSteno = () =>
-    getConfig.keymapStyle === "steno" ||
-    getConfig.keymapStyle === "steno_matrix";
-
   // Steno keys never flash.
   const flashInfo = createMemo(() => {
     if (isSteno() || getConfig.keymapMode !== "react") {
@@ -207,41 +246,56 @@ function Key(
     prevKeyWasHighlighted = keyWasHighlighted;
   });
 
+  const idleColors = createMemo(() => {
+    const theme = getTheme();
+    if (
+      getConfig.keymapFingerColors !== "off" &&
+      !isSteno() &&
+      props.finger !== undefined
+    ) {
+      return fingerColors(props.finger, theme);
+    }
+    return { bg: theme.subAlt, text: theme.sub };
+  });
+
+  const restBgColor = () => (isNext() ? getTheme().main : idleColors().bg);
+  const restTextColor = () => (isNext() ? getTheme().bg : idleColors().text);
+
   const baseKeyBgColor = () => {
     if (isFading()) {
       return getTheme().main;
     }
-    return isNext() ? getTheme().main : getTheme().subAlt;
+    return restBgColor();
   };
 
   const baseKeyColor = () => {
     if (isFading()) {
       return getTheme().bg;
     }
-    return isNext() ? getTheme().bg : getTheme().sub;
+    return restTextColor();
   };
 
   const animKeyBgColor = createMemo(() => {
     if (isFading()) {
-      return [getTheme().main, getTheme().subAlt];
+      return [getTheme().main, idleColors().bg];
     }
     if (flashInfo().tick === 0) {
-      return [isNext() ? getTheme().main : getTheme().subAlt];
+      return [restBgColor()];
     }
     return [
       flashInfo().correct ? getTheme().main : getTheme().error,
-      isNext() ? getTheme().main : getTheme().subAlt,
+      restBgColor(),
     ];
   });
 
   const animKeyColor = createMemo(() => {
     if (isFading()) {
-      return [getTheme().bg, getTheme().sub];
+      return [getTheme().bg, idleColors().text];
     }
     if (flashInfo().tick === 0) {
-      return [isNext() ? getTheme().bg : getTheme().sub];
+      return [restTextColor()];
     }
-    return [getTheme().bg, isNext() ? getTheme().bg : getTheme().sub];
+    return [getTheme().bg, restTextColor()];
   });
 
   // Don't apply reduced motion. If the user activates react/next they want animations.
@@ -298,6 +352,15 @@ function Key(
                   "bg-em-xs absolute bottom-0.75 left-auto h-0.5 w-2 rounded bg-bg",
                 )}
               ></div>
+            </Show>
+            <Show
+              when={
+                props.isHomeKey &&
+                !props.isHoming &&
+                getConfig.keymapFingerColors !== "off"
+              }
+            >
+              <div class="absolute bottom-0.75 left-auto h-0.5 w-0.5 rounded bg-bg"></div>
             </Show>
           </>
         }
