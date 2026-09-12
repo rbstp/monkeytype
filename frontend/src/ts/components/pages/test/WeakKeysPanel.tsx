@@ -2,7 +2,7 @@ import { createMemo, For, Show } from "solid-js";
 
 import { getConfig } from "../../../config/store";
 import { Keycode } from "../../../constants/keys";
-import { inputLayoutObject } from "../../../states/test";
+import { getLastResult, inputLayoutObject } from "../../../states/test";
 import { getTheme } from "../../../states/theme";
 import { FINGER_LABEL, FINGERS, fingerColors } from "../../../trainer/finger";
 import {
@@ -12,6 +12,7 @@ import {
   layoutStatsName,
   worstKeys,
 } from "../../../trainer/key-stats";
+import { buildTips } from "../../../trainer/tips";
 import { keycodeToLayoutKey } from "../../../utils/key-converter";
 
 const shownKeys = 8;
@@ -29,6 +30,16 @@ export function WeakKeysPanel() {
       layout === undefined ? undefined : keycodeToLayoutKey(keycode, layout);
     return label === " " ? "space" : (label ?? keycode);
   };
+
+  const tips = createMemo(() => {
+    const result = getLastResult();
+    return buildTips({
+      acc: result?.acc,
+      consistency: result?.consistency,
+      fingers: fingers(),
+      weakKeys: keys().map((key) => ({ ...key, legend: legend(key.keycode) })),
+    });
+  });
 
   return (
     <Show when={keys().length > 0}>
@@ -69,6 +80,9 @@ export function WeakKeysPanel() {
             </For>
           </div>
         </div>
+        <ul class="list-disc pl-5 text-xs sm:col-span-2">
+          <For each={tips()}>{(tip) => <li>{tip}</li>}</For>
+        </ul>
       </div>
     </Show>
   );

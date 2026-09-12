@@ -110,12 +110,18 @@ export function applySamples(
   return next;
 }
 
-export type RankedKey = { keycode: Keycode } & KeyStat;
+export type RankedKey = { keycode: Keycode; finger?: Finger } & KeyStat;
 
 export function worstKeys(stats: LayoutStats, count: number): RankedKey[] {
   return (Object.entries(stats) as [Keycode, KeyStat][])
     .filter(([, stat]) => stat.total >= minSamplesForRanking)
-    .map(([keycode, stat]) => ({ keycode, ...stat }))
+    .map(([keycode, stat]) => ({
+      keycode,
+      ...stat,
+      ...(keycodeToFinger[keycode] === undefined
+        ? {}
+        : { finger: keycodeToFinger[keycode] }),
+    }))
     .sort((a, b) => b.ema - a.ema)
     .slice(0, count);
 }

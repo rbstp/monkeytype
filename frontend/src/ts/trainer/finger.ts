@@ -132,7 +132,7 @@ const fingerTint: Record<Finger, number> = {
   RM: 0.45,
   LI: 0.6,
   RI: 0.6,
-  thumb: 0.08,
+  thumb: 0.35,
 };
 
 export type FingerTheme = Pick<Theme, "main" | "subAlt" | "sub" | "bg">;
