@@ -208,7 +208,7 @@ const [keymapLayoutObject, keymapLayoutPromise] = useResourceWithPromise(
     return result;
   },
 );
-export { keymapLayoutObject };
+export { inputLayoutObject, keymapLayoutObject };
 
 /**
  * Used for non reactive access. Do not use in Solid components.

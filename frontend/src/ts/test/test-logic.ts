@@ -21,6 +21,7 @@ import * as TodayTracker from "./today-tracker";
 import * as ChallengeContoller from "../controllers/challenge-controller";
 import { clearQuoteStats } from "../states/quote-rate";
 import * as Result from "./result";
+import * as Trainer from "../trainer";
 import {
   getActivePage,
   getCustomTextIndicator,
@@ -44,6 +45,7 @@ import {
   resetIncompleteTests,
   setIsPaceRepeat,
   setIsRepeated,
+  isTestInvalid,
   setIsTestInvalid,
   setLastResult,
   getActiveWordIndex,
@@ -973,6 +975,13 @@ export async function finish(difficultyFailed = false): Promise<void> {
   }
 
   // test is valid
+
+  Trainer.onTestFinished({
+    eventLog,
+    completedEvent,
+    invalid: isTestInvalid(),
+    countsForLesson: !dontSave,
+  });
 
   if (isRepeated() || difficultyFailed) {
     if (Config.resultSaving) {

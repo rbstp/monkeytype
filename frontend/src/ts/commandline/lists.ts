@@ -3,6 +3,7 @@ import BailOutCommands from "./lists/bail-out";
 import QuoteFavoriteCommands from "./lists/quote-favorites";
 import NavigationCommands from "./lists/navigation";
 import ResultScreenCommands from "./lists/result-screen";
+import TrainerCommands from "./lists/trainer";
 import CustomBackgroundCommands from "./lists/custom-background";
 import FontFamilyCommands from "./lists/font-family";
 import CustomBackgroundFilterCommands from "./lists/background-filter";
@@ -44,6 +45,9 @@ export const commands: CommandsSubgroup = {
   list: [
     //result
     ...ResultScreenCommands,
+
+    //trainer
+    ...TrainerCommands,
 
     //test screen
     ...buildCommands(
