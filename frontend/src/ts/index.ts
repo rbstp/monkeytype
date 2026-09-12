@@ -38,7 +38,6 @@ import { setVersion } from "./states/core";
 import { loadFromLocalStorage } from "./config/lifecycle";
 
 import "./input/hotkeys";
-import { showModal } from "./states/modals";
 import { getLastEventLog } from "./states/test";
 import { buildEventLog } from "./test/events/data";
 
@@ -70,9 +69,6 @@ void fetchLatestVersion().then((data) => {
 
 Focus.set(true, true);
 const accepted = Cookies.getAcceptedCookies();
-if (accepted === null) {
-  showModal("Cookies");
-}
 void init(onAuthStateChanged).then(() => {
   if (accepted !== null) {
     Cookies.activateWhatsAccepted();
