@@ -1,9 +1,11 @@
 import {
+  showErrorNotification,
   showNoticeNotification,
   showSuccessNotification,
 } from "../../states/notifications";
 import { isTestActive } from "../../states/test";
 import * as TestLogic from "../../test/test-logic";
+import { exportBackup, importBackup } from "../../trainer/backup";
 import { resetKeyStats } from "../../trainer/key-stats";
 import { LESSONS, progress, resetProgress } from "../../trainer/lessons";
 import {
@@ -79,6 +81,31 @@ const commands: Command[] = [
     exec: (): void => {
       stopLesson();
       void TestLogic.restart();
+    },
+  },
+  {
+    id: "trainerExport",
+    display: "Trainer: export data",
+    alias: "backup",
+    icon,
+    input: true,
+    available: notDuringTest,
+    defaultValue: exportBackup,
+  },
+  {
+    id: "trainerImport",
+    display: "Trainer: import data",
+    alias: "restore backup",
+    icon,
+    input: true,
+    available: notDuringTest,
+    exec: ({ input }): void => {
+      if (input === undefined || input === "") return;
+      if (importBackup(input)) {
+        showSuccessNotification("Trainer data imported");
+      } else {
+        showErrorNotification("Invalid trainer data");
+      }
     },
   },
   {

@@ -17,11 +17,11 @@ export type KeyStat = z.infer<typeof KeyStatSchema>;
 const LayoutStatsSchema = z.record(z.string(), KeyStatSchema);
 export type LayoutStats = Partial<Record<Keycode, KeyStat>>;
 
-const KeyStatsSchema = z.object({
+export const KeyStatsSchema = z.object({
   version: z.literal(1),
   layouts: z.record(z.string(), LayoutStatsSchema),
 });
-type KeyStats = z.infer<typeof KeyStatsSchema>;
+export type KeyStats = z.infer<typeof KeyStatsSchema>;
 
 const emaWindow = 50;
 const errorPenaltyMs = 5000;
@@ -184,4 +184,12 @@ export function recordSamples(layoutName: string, samples: KeySample[]): void {
 
 export function resetKeyStats(): void {
   setKeyStats({ version: 1, layouts: {} });
+}
+
+export function getKeyStats(): KeyStats {
+  return keyStats();
+}
+
+export function replaceKeyStats(data: KeyStats): void {
+  setKeyStats(data);
 }

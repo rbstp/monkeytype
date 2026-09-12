@@ -254,7 +254,7 @@ const AttemptSchema = z.object({
 });
 export type Attempt = z.infer<typeof AttemptSchema>;
 
-const ProgressSchema = z.object({
+export const ProgressSchema = z.object({
   version: z.literal(1),
   current: z.number().int().nonnegative(),
   unlocked: z.number().int().nonnegative(),
@@ -369,4 +369,8 @@ export function recordAttempt(attempt: Attempt): boolean {
 
 export function resetProgress(): void {
   setProgress({ version: 1, current: 0, unlocked: 0, attempts: [] });
+}
+
+export function replaceProgress(data: Progress): void {
+  setProgress(data);
 }
