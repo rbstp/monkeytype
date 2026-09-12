@@ -146,7 +146,7 @@ services:
     volumes:
       - firebase-data:/data
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9099/"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9099/"]
       interval: 5s
       timeout: 10s
       retries: 15
