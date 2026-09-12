@@ -15,6 +15,12 @@ RUN npm i -g pnpm@11.21.0 && \
 #deploy (install all non-dev dependencies in a single node_module folder)
 RUN pnpm deploy --legacy --filter backend --prod /prod/backend
 
+#pnpm 11 links workspace packages instead of copying them, replace the links with the built output
+RUN for link in /prod/backend/node_modules/@monkeytype/*; do \
+      name=$(basename "$link") && rm "$link" && mkdir "$link" && \
+      cp -r "/app/packages/$name/package.json" "/app/packages/$name/dist" "$link"; \
+    done
+
 #---------------------------------
 
 ## target image
