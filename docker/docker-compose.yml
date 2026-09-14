@@ -36,7 +36,8 @@ services:
 
   monkeytype-frontend:
     container_name: monkeytype-frontend
-    image: monkeytype/monkeytype-frontend:latest
+    image: monkeytype/monkeytype-frontend:trainer
+    pull_policy: never
     #uncomment if you want to expose the frontend server directly (not recommended)
     #ports:
     #  - "${FRONTEND_PORT:-8080}:80"
@@ -75,7 +76,8 @@ services:
 
   monkeytype-backend:
     container_name: monkeytype-backend
-    image: monkeytype/monkeytype-backend:latest
+    image: monkeytype/monkeytype-backend:trainer
+    pull_policy: never
     #uncomment if you want to expose the backend server (not recommended)
     #ports:
     #  - "${BACKEND_PORT:-5005}:5005"
