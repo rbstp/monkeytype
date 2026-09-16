@@ -130,54 +130,39 @@ describe("lessons", () => {
   });
 
   describe("canUnlock", () => {
-    const attempt = (
-      overrides: Partial<Attempt> = {},
-      perKeyTotal = 10,
-      perKeyErrors = 0,
-    ): Attempt => ({
+    const attempt = (overrides: Partial<Attempt> = {}): Attempt => ({
       lesson: 1,
       wpm: 35,
       acc: 98,
       perKey: {
-        KeyE: { total: perKeyTotal, errors: perKeyErrors },
-        KeyI: { total: perKeyTotal, errors: perKeyErrors },
+        KeyE: { total: 10, errors: 0 },
+        KeyI: { total: 10, errors: 0 },
       },
       ts: 0,
       ...overrides,
     });
-    const keys = LESSONS[1]?.newKeys ?? [];
 
-    it("needs a full window of passing attempts", () => {
-      expect(canUnlock([attempt(), attempt()], 1, keys)).toBe(false);
-      expect(canUnlock([attempt(), attempt(), attempt()], 1, keys)).toBe(true);
+    it("unlocks on a single passing attempt", () => {
+      expect(canUnlock([], 1)).toBe(false);
+      expect(canUnlock([attempt()], 1)).toBe(true);
     });
 
-    it("only looks at the most recent attempts of that lesson", () => {
+    it("only looks at the most recent attempt of that lesson", () => {
+      expect(canUnlock([attempt({ acc: 80 }), attempt()], 1)).toBe(true);
+      expect(canUnlock([attempt(), attempt({ wpm: 20 })], 1)).toBe(false);
+      expect(canUnlock([attempt(), attempt({ lesson: 0 })], 1)).toBe(true);
+    });
+
+    it("ignores per-key accuracy", () => {
       expect(
-        canUnlock(
-          [
-            attempt({ acc: 80 }),
-            attempt(),
-            attempt(),
-            attempt({ lesson: 0 }),
-            attempt(),
-          ],
-          1,
-          keys,
-        ),
+        canUnlock([attempt({ perKey: { KeyE: { total: 2, errors: 2 } } })], 1),
       ).toBe(true);
-      expect(
-        canUnlock([attempt(), attempt(), attempt({ wpm: 20 })], 1, keys),
-      ).toBe(false);
     });
 
-    it("requires samples and accuracy on every new key", () => {
-      expect(
-        canUnlock([attempt({}, 2), attempt({}, 2), attempt({}, 2)], 1, keys),
-      ).toBe(false);
-      expect(
-        canUnlock([attempt({}, 10, 1), attempt({}, 10, 1), attempt()], 1, keys),
-      ).toBe(false);
+    it("needs both wpm and accuracy", () => {
+      expect(canUnlock([attempt({ acc: 96 })], 1)).toBe(false);
+      expect(canUnlock([attempt({ wpm: 29 })], 1)).toBe(false);
+      expect(canUnlock([attempt({ wpm: 30, acc: 97 })], 1)).toBe(true);
     });
   });
 });

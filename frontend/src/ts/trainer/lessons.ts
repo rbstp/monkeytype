@@ -268,14 +268,12 @@ export type UnlockCriteria = {
   minAcc: number;
   minWpm: number;
   window: number;
-  keySamples: number;
 };
 
 export const defaultCriteria: UnlockCriteria = {
   minAcc: 97,
   minWpm: 30,
-  window: 3,
-  keySamples: 40,
+  window: 1,
 };
 
 export function countPerKey(
@@ -299,36 +297,16 @@ export function countPerKey(
 export function canUnlock(
   attempts: Attempt[],
   lesson: number,
-  newKeys: Keycode[],
   criteria: UnlockCriteria = defaultCriteria,
 ): boolean {
   const recent = attempts
     .filter((attempt) => attempt.lesson === lesson)
     .slice(-criteria.window);
   if (recent.length < criteria.window) return false;
-  if (
-    !recent.every(
-      (attempt) =>
-        attempt.acc >= criteria.minAcc && attempt.wpm >= criteria.minWpm,
-    )
-  ) {
-    return false;
-  }
-  const minPerKey = Math.max(
-    3,
-    Math.ceil(criteria.keySamples / Math.max(1, newKeys.length)),
+  return recent.every(
+    (attempt) =>
+      attempt.acc >= criteria.minAcc && attempt.wpm >= criteria.minWpm,
   );
-  return newKeys.every((keycode) => {
-    let total = 0;
-    let errors = 0;
-    for (const attempt of recent) {
-      total += attempt.perKey[keycode]?.total ?? 0;
-      errors += attempt.perKey[keycode]?.errors ?? 0;
-    }
-    return (
-      total >= minPerKey && ((total - errors) / total) * 100 >= criteria.minAcc
-    );
-  });
 }
 
 const [progress, setProgress] = useLocalStorage<Progress>({
@@ -348,8 +326,7 @@ export function setCurrentLesson(index: number): void {
  * @returns true when a new lesson was unlocked
  */
 export function recordAttempt(attempt: Attempt): boolean {
-  const lesson = LESSONS[attempt.lesson];
-  if (lesson === undefined) return false;
+  if (LESSONS[attempt.lesson] === undefined) return false;
   let unlockedNow = false;
   setProgress((current) => {
     const attempts = [...current.attempts, attempt].slice(-maxAttempts);
@@ -357,7 +334,7 @@ export function recordAttempt(attempt: Attempt): boolean {
     unlockedNow =
       next < LESSONS.length &&
       current.unlocked < next &&
-      canUnlock(attempts, attempt.lesson, lesson.newKeys);
+      canUnlock(attempts, attempt.lesson);
     return {
       ...current,
       attempts,
