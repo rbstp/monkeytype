@@ -317,6 +317,26 @@ const [progress, setProgress] = useLocalStorage<Progress>({
 
 export { progress };
 
+/**
+ * Re-evaluates the stored attempts against the current criteria, so a change to
+ * the criteria applies to lessons already practised instead of only to the next
+ * test.
+ */
+function syncUnlocked(): void {
+  setProgress((current) => {
+    let unlocked = current.unlocked;
+    while (
+      unlocked + 1 < LESSONS.length &&
+      canUnlock(current.attempts, unlocked)
+    ) {
+      unlocked++;
+    }
+    return unlocked === current.unlocked ? current : { ...current, unlocked };
+  });
+}
+
+syncUnlocked();
+
 export function setCurrentLesson(index: number): void {
   setProgress((current) => ({ ...current, current: index }));
 }
@@ -350,4 +370,5 @@ export function resetProgress(): void {
 
 export function replaceProgress(data: Progress): void {
   setProgress(data);
+  syncUnlocked();
 }
