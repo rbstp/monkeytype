@@ -41,11 +41,17 @@ const [snapshot, setSnapshot] = useLocalStorage<Snapshot | null>({
   fallback: null,
 });
 
-let activeLesson: number | null = null;
+const [activeLesson, setActiveLesson] = useLocalStorage<number | null>({
+  key: "trainerActiveLesson",
+  schema: z.number().int().nonnegative().nullable(),
+  fallback: null,
+});
+
 let applying = false;
+let inFullConfigChange = false;
 
 export function getActiveLesson(): number | null {
-  return activeLesson;
+  return activeLesson();
 }
 
 function takeSnapshot(): Snapshot {
@@ -125,7 +131,7 @@ export async function startLesson(index: number): Promise<boolean> {
 
   const previous = snapshot() ?? takeSnapshot();
   if (!applyLessonConfig()) {
-    activeLesson = null;
+    setActiveLesson(null);
     restore(previous, true);
     return false;
   }
@@ -141,25 +147,55 @@ export async function startLesson(index: number): Promise<boolean> {
     isLong: false,
   });
 
-  activeLesson = index;
+  setActiveLesson(index);
   setCurrentLesson(index);
   return true;
 }
 
+/**
+ * Re-applies the lesson config after a reload. The config is applied with
+ * nosave, so a fresh page comes back with the pre-lesson mode even though the
+ * lesson words and the stored lesson are still there.
+ */
+function resumeLesson(index: number): void {
+  const lesson = LESSONS[index];
+  if (lesson === undefined || !applyLessonConfig()) {
+    setActiveLesson(null);
+    return;
+  }
+  setCustomTextIndicator({
+    name: `lesson ${index + 1}: ${lesson.name}`,
+    isLong: false,
+  });
+}
+
 export function stopLesson(options = { restoreMode: true }): void {
-  activeLesson = null;
+  setActiveLesson(null);
   const previous = snapshot();
   if (previous !== null) restore(previous, options.restoreMode);
 }
 
 configEvent.subscribe(({ key }) => {
   if (applying) return;
-  if (key === "fullConfigChangeFinished" && activeLesson === null) {
+  if (key === "fullConfigChange") {
+    inFullConfigChange = true;
+    return;
+  }
+  if (key === "fullConfigChangeFinished") {
+    inFullConfigChange = false;
+    const lesson = activeLesson();
+    if (lesson !== null) {
+      resumeLesson(lesson);
+      return;
+    }
     const leftover = snapshot();
     if (leftover !== null) restore(leftover, true);
     return;
   }
-  if (activeLesson === null) return;
+  // a full config change replays every key, which would look like the user
+  // leaving the lesson
+  if (inFullConfigChange) return;
+  if (activeLesson() === null) return;
   if (key === "mode") {
     stopLesson({ restoreMode: false });
   } else if (watchedKeys.includes(key as WatchedKey)) {
