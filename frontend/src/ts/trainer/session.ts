@@ -54,6 +54,14 @@ export function getActiveLesson(): number | null {
   return activeLesson();
 }
 
+/**
+ * Lessons always track the next key, so the keymap can name the finger to use
+ * even when the keymap mode is not "next".
+ */
+export function tracksNextKey(): boolean {
+  return Config.keymapMode === "next" || activeLesson() !== null;
+}
+
 function takeSnapshot(): Snapshot {
   return {
     mode: Config.mode,

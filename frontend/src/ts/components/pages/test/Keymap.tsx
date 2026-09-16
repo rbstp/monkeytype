@@ -21,6 +21,7 @@ import {
   HOME_KEYS,
   shiftFingerFor,
 } from "../../../trainer/finger";
+import { tracksNextKey } from "../../../trainer/session";
 import { cn } from "../../../utils/cn";
 import { keycodeToLayoutKey } from "../../../utils/key-converter";
 import { isMacLike } from "../../../utils/misc";
@@ -97,7 +98,7 @@ function Keyboard(props: { displayName: string; layoutData: LayoutObject }) {
 
   const nextFingerLabel = createMemo(() => {
     if (
-      getConfig.keymapMode !== "next" ||
+      !tracksNextKey() ||
       getConfig.keymapFingerColors === "off" ||
       isSteno()
     ) {

@@ -11,6 +11,8 @@ import {
 import { countPerKey, LESSONS, recordAttempt } from "./lessons";
 import { getActiveLesson } from "./session";
 
+export { tracksNextKey } from "./session";
+
 export type FinishedTest = {
   eventLog: EventLog;
   completedEvent: CompletedEvent;

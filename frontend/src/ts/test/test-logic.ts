@@ -543,7 +543,7 @@ async function init(): Promise<boolean> {
     TestWords.words.removeCommitCharacterFromLastWord();
   }
 
-  if (Config.keymapMode === "next" && Config.mode !== "zen") {
+  if (Trainer.tracksNextKey() && Config.mode !== "zen") {
     highlight(
       nthElementFromArray(
         // ignoring for now but this might need a different approach

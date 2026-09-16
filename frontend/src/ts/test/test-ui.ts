@@ -32,6 +32,7 @@ import {
 import * as SoundController from "../controllers/sound-controller";
 import * as Numbers from "@monkeytype/util/numbers";
 import { highlight } from "../events/keymap";
+import { tracksNextKey } from "../trainer/session";
 import * as Focus from "../test/focus";
 import {
   blurInputElement,
@@ -1676,7 +1677,7 @@ function afterAnyTestInput(
     setCurrentLiveStats({ acc });
   }
 
-  if (Config.keymapMode === "next") {
+  if (tracksNextKey()) {
     const keyToHighlight =
       TestWords.words.getCurrent()?.textWithCommit[getCurrentInput().length];
     if (keyToHighlight !== undefined) {
@@ -1768,7 +1769,7 @@ export async function afterTestWordChange(
     setCurrentLiveStats({ burst: Math.round(lastBurst) });
   }
 
-  if (Config.keymapMode === "next") {
+  if (tracksNextKey()) {
     const keyToHighlight =
       TestWords.words.getCurrent()?.textWithCommit[getCurrentInput().length];
     if (keyToHighlight !== undefined) {
