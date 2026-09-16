@@ -159,6 +159,12 @@ describe("lessons", () => {
       ).toBe(true);
     });
 
+    it("compares the values shown on the result screen", () => {
+      expect(canUnlock([attempt({ wpm: 29.6, acc: 97.4 })], 1)).toBe(true);
+      expect(canUnlock([attempt({ wpm: 29.4 })], 1)).toBe(false);
+      expect(canUnlock([attempt({ acc: 96.9 })], 1)).toBe(false);
+    });
+
     it("needs both wpm and accuracy", () => {
       expect(canUnlock([attempt({ acc: 96 })], 1)).toBe(false);
       expect(canUnlock([attempt({ wpm: 29 })], 1)).toBe(false);

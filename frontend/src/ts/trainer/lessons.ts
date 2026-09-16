@@ -303,9 +303,12 @@ export function canUnlock(
     .filter((attempt) => attempt.lesson === lesson)
     .slice(-criteria.window);
   if (recent.length < criteria.window) return false;
+  // compare the values the result screen shows, so a displayed 30 wpm / 97%
+  // always passes the bar it is measured against
   return recent.every(
     (attempt) =>
-      attempt.acc >= criteria.minAcc && attempt.wpm >= criteria.minWpm,
+      Math.floor(attempt.acc) >= criteria.minAcc &&
+      Math.round(attempt.wpm) >= criteria.minWpm,
   );
 }
 
