@@ -2,14 +2,20 @@ import { Finger, FINGER_LABEL, FINGERS } from "./finger";
 import { accuracy, FingerSummary, RankedKey } from "./key-stats";
 
 type TipInput = {
+  wpm?: number;
   acc?: number;
   consistency?: number;
+  /** share of the test spent idle, 0 to 1 */
+  afkShare?: number;
   fingers: Record<Finger, FingerSummary>;
   weakKeys: (RankedKey & { legend: string })[];
 };
 
 const targetAcc = 97;
+const hunting = 20;
 const lowConsistency = 60;
+const highAfkShare = 0.1;
+const slowKeyMs = 600;
 const minFingerSamples = 20;
 const maxTips = 3;
 
@@ -30,36 +36,53 @@ function weakestFinger(
   return weakest;
 }
 
-export function buildTips(input: TipInput): string[] {
-  const tips: string[] = [];
+function duration(ms: number): string {
+  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
+}
 
-  if (input.acc !== undefined && input.acc < targetAcc) {
-    tips.push(
-      `Accuracy first: slow down until you hold ${targetAcc}%. Speed follows on its own.`,
-    );
-  } else if (input.acc !== undefined) {
-    tips.push(
-      "Accuracy is on target. Push the pace a little and keep it there.",
-    );
+function accuracyTip(input: TipInput): string | undefined {
+  if (input.acc === undefined) return undefined;
+  const acc = Math.round(input.acc);
+  if (input.acc >= targetAcc) {
+    return `Accuracy ${acc}% is on target. Push the pace a little and keep it there.`;
   }
+  // below the target but already crawling: the misses come from reaching with
+  // the wrong finger, so typing even slower does not help
+  if (input.wpm !== undefined && input.wpm < hunting) {
+    return `Accuracy ${acc}% at ${Math.round(input.wpm)} wpm: these are wrong-finger reaches, not speed. Keep every finger on its home key and let the finger hint under the keyboard lead.`;
+  }
+  return `Accuracy ${acc}%: slow down until you hold ${targetAcc}%. Speed follows on its own.`;
+}
 
+function rhythmTip(input: TipInput): string | undefined {
+  if (input.afkShare !== undefined && input.afkShare >= highAfkShare) {
+    return `${Math.round(input.afkShare * 100)}% of this test was idle. Staring at the keyboard teaches nothing — keep a slow, unbroken rhythm instead.`;
+  }
   if (input.consistency !== undefined && input.consistency < lowConsistency) {
-    tips.push(
-      "The dips in the chart are pauses to find a key. Keep every finger on its home key and return there after each press.",
-    );
+    return `Consistency ${Math.round(input.consistency)}%: your pace swings between the keys you know and the ones you search for. Hold one steady speed, even a slow one.`;
   }
+  return undefined;
+}
 
+function keysTip(input: TipInput): string | undefined {
+  const slow = input.weakKeys
+    .filter((key) => key.ema >= slowKeyMs)
+    .slice(0, 3)
+    .map((key) => `${key.legend} ${duration(key.ema)}`);
   const finger = weakestFinger(input.fingers);
+  const parts: string[] = [];
+  if (slow.length > 0) parts.push(`Slowest keys: ${slow.join(", ")}`);
   if (finger !== undefined) {
-    const keys = input.weakKeys
-      .filter((key) => key.finger === finger)
-      .map((key) => key.legend)
-      .slice(0, 3);
-    const keyHint = keys.length === 0 ? "" : ` Watch ${keys.join(" ")}.`;
-    tips.push(
-      `Weakest finger: ${FINGER_LABEL[finger]} at ${Math.round(accuracy(input.fingers[finger]))}%.${keyHint} Say the letter as you press it for a few tests.`,
+    parts.push(
+      `weakest finger: ${FINGER_LABEL[finger]} at ${Math.round(accuracy(input.fingers[finger]))}%`,
     );
   }
+  if (parts.length === 0) return undefined;
+  return `${parts.join(", ")}. Say each letter as you press it for a few tests.`;
+}
 
-  return tips.slice(0, maxTips);
+export function buildTips(input: TipInput): string[] {
+  return [accuracyTip(input), rhythmTip(input), keysTip(input)]
+    .filter((tip): tip is string => tip !== undefined)
+    .slice(0, maxTips);
 }

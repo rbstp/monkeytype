@@ -34,8 +34,12 @@ export function WeakKeysPanel() {
   const tips = createMemo(() => {
     const result = getLastResult();
     return buildTips({
+      wpm: result?.wpm,
       acc: result?.acc,
       consistency: result?.consistency,
+      ...(result?.afkDuration !== undefined && result.testDuration > 0
+        ? { afkShare: result.afkDuration / result.testDuration }
+        : {}),
       fingers: fingers(),
       weakKeys: keys().map((key) => ({ ...key, legend: legend(key.keycode) })),
     });
