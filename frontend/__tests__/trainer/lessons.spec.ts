@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { LayoutObject } from "@monkeytype/schemas/layouts";
 import {
   Attempt,
+  bestWpm,
   buildLessonWords,
   canUnlock,
   countPerKey,
@@ -169,6 +170,31 @@ describe("lessons", () => {
       expect(canUnlock([attempt({ acc: 96 })], 1)).toBe(false);
       expect(canUnlock([attempt({ wpm: 29 })], 1)).toBe(false);
       expect(canUnlock([attempt({ wpm: 30, acc: 97 })], 1)).toBe(true);
+    });
+  });
+
+  describe("bestWpm", () => {
+    const at = (lesson: number, wpm: number): Attempt => ({
+      lesson,
+      wpm,
+      acc: 100,
+      perKey: {},
+      ts: 0,
+    });
+
+    it("returns the highest wpm among that lesson's attempts", () => {
+      const attempts = [at(1, 25), at(2, 60), at(1, 31.4), at(1, 31.4)];
+      expect(bestWpm(attempts, 1)).toBe(31.4);
+      expect(bestWpm(attempts, 2)).toBe(60);
+    });
+
+    it("keeps a zero wpm attempt as a best", () => {
+      expect(bestWpm([at(0, 0)], 0)).toBe(0);
+    });
+
+    it("is undefined for a lesson without attempts", () => {
+      expect(bestWpm([at(1, 25)], 0)).toBeUndefined();
+      expect(bestWpm([], 0)).toBeUndefined();
     });
   });
 });

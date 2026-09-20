@@ -35,11 +35,13 @@ import { OutOfFocusWarning } from "./pages/test/OutOfFocusWarning";
 import { Premid } from "./pages/test/Premid";
 import { TestConfig } from "./pages/test/TestConfig";
 import { WeakKeysPanel } from "./pages/test/WeakKeysPanel";
+import { TrainerPage } from "./pages/trainer/TrainerPage";
 import { Popups } from "./popups/Popups";
 
 const components: Record<string, () => JSXElement> = {
   footer: () => <Footer />,
   aboutpage: () => <AboutPage />,
+  trainerpage: () => <TrainerPage />,
   settingspage: () => <SettingsPage />,
   accountpage: () => <AccountPage />,
   loginpage: () => <LoginPage />,
