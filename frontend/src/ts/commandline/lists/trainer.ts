@@ -1,15 +1,25 @@
 import { navigate } from "../../controllers/route-controller";
-import {
-  showErrorNotification,
-  showSuccessNotification,
-} from "../../states/notifications";
+import { showSuccessNotification } from "../../states/notifications";
 import { isTestActive } from "../../states/test";
 import * as TestLogic from "../../test/test-logic";
-import { beginLesson } from "../../trainer/actions";
-import { exportBackup, importBackup } from "../../trainer/backup";
+import {
+  beginDrill,
+  beginLesson,
+  exportBackupFile,
+  requestImport,
+} from "../../trainer/actions";
 import { resetKeyStats } from "../../trainer/key-stats";
-import { LESSONS, progress, resetProgress } from "../../trainer/lessons";
-import { getActiveLesson, stopLesson } from "../../trainer/session";
+import {
+  currentLesson,
+  LESSONS,
+  resetProgress,
+  unlockedUpTo,
+} from "../../trainer/lessons";
+import {
+  getActiveLesson,
+  isSessionActive,
+  stopLesson,
+} from "../../trainer/session";
 import { Command, CommandsSubgroup } from "../types";
 
 const icon = "fa-graduation-cap";
@@ -17,7 +27,7 @@ const icon = "fa-graduation-cap";
 const notDuringTest = (): boolean => !isTestActive();
 
 function lessonDisplay(index: number): string {
-  const locked = progress().unlocked < index ? " (locked)" : "";
+  const locked = unlockedUpTo() < index ? " (locked)" : "";
   return `${index + 1}. ${LESSONS[index]?.name}${locked}`;
 }
 
@@ -45,15 +55,15 @@ const commands: Command[] = [
     alias: "typing tutor practice",
     icon,
     available: notDuringTest,
-    exec: (): void => void beginLesson(progress().current),
+    exec: (): void => void beginLesson(currentLesson()),
   },
   {
     id: "trainerNext",
     display: "Trainer: next lesson",
     icon,
     available: (): boolean =>
-      notDuringTest() && progress().unlocked > progress().current,
-    exec: (): void => void beginLesson(progress().current + 1),
+      notDuringTest() && unlockedUpTo() > currentLesson(),
+    exec: (): void => void beginLesson(currentLesson() + 1),
   },
   {
     id: "trainerOpen",
@@ -70,10 +80,18 @@ const commands: Command[] = [
     subgroup: lessonList,
   },
   {
+    id: "trainerDrill",
+    display: "Trainer: drill weak keys",
+    alias: "practice slow error-prone",
+    icon,
+    available: notDuringTest,
+    exec: (): void => void beginDrill(),
+  },
+  {
     id: "trainerStop",
     display: "Trainer: stop",
     icon,
-    available: (): boolean => notDuringTest() && getActiveLesson() !== null,
+    available: (): boolean => notDuringTest() && isSessionActive(),
     exec: (): void => {
       stopLesson();
       void TestLogic.restart();
@@ -82,26 +100,19 @@ const commands: Command[] = [
   {
     id: "trainerExport",
     display: "Trainer: export data",
-    alias: "backup",
+    alias: "backup download file",
     icon,
-    input: true,
     available: notDuringTest,
-    defaultValue: exportBackup,
+    exec: exportBackupFile,
   },
   {
     id: "trainerImport",
     display: "Trainer: import data",
-    alias: "restore backup",
+    alias: "restore backup upload file",
     icon,
-    input: true,
     available: notDuringTest,
-    exec: ({ input }): void => {
-      if (input === undefined || input === "") return;
-      if (importBackup(input)) {
-        showSuccessNotification("Trainer data imported");
-      } else {
-        showErrorNotification("Invalid trainer data");
-      }
+    exec: (): void => {
+      void navigate("/trainer").then(requestImport);
     },
   },
   {

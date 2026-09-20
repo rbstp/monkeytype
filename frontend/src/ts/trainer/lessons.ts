@@ -1,14 +1,16 @@
 import { z } from "zod";
 import { TrainerUnlock } from "@monkeytype/schemas/configs";
 import { LayoutObject } from "@monkeytype/schemas/layouts";
-import { Config } from "../config/store";
+import { Config, getConfig } from "../config/store";
 import { Keycode } from "../constants/keys";
 import { configEvent } from "../events/config";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { keycodeToLayoutKey } from "../utils/key-converter";
+import { resolveLayoutName } from "../utils/layout-name";
 import { KeySample } from "./key-stats";
 
 export type Lesson = {
+  id: string;
   name: string;
   newKeys: Keycode[];
   layer?: 0 | 1;
@@ -45,6 +47,7 @@ const letterKeys: Keycode[] = [
 
 export const LESSONS: Lesson[] = [
   {
+    id: "home-row",
     name: "home row",
     newKeys: [
       "KeyA",
@@ -57,23 +60,25 @@ export const LESSONS: Lesson[] = [
       "Semicolon",
     ],
   },
-  { name: "e i", newKeys: ["KeyE", "KeyI"] },
-  { name: "r u", newKeys: ["KeyR", "KeyU"] },
-  { name: "t y", newKeys: ["KeyT", "KeyY"] },
-  { name: "g h", newKeys: ["KeyG", "KeyH"] },
-  { name: "w o", newKeys: ["KeyW", "KeyO"] },
-  { name: "q p", newKeys: ["KeyQ", "KeyP"] },
-  { name: "v m", newKeys: ["KeyV", "KeyM"] },
-  { name: "c ,", newKeys: ["KeyC", "Comma"] },
-  { name: "b n", newKeys: ["KeyB", "KeyN"] },
-  { name: "x .", newKeys: ["KeyX", "Period"] },
-  { name: "z /", newKeys: ["KeyZ", "Slash"] },
-  { name: "capitals", newKeys: letterKeys, layer: 1 },
+  { id: "e-i", name: "e i", newKeys: ["KeyE", "KeyI"] },
+  { id: "r-u", name: "r u", newKeys: ["KeyR", "KeyU"] },
+  { id: "t-y", name: "t y", newKeys: ["KeyT", "KeyY"] },
+  { id: "g-h", name: "g h", newKeys: ["KeyG", "KeyH"] },
+  { id: "w-o", name: "w o", newKeys: ["KeyW", "KeyO"] },
+  { id: "q-p", name: "q p", newKeys: ["KeyQ", "KeyP"] },
+  { id: "v-m", name: "v m", newKeys: ["KeyV", "KeyM"] },
+  { id: "c-comma", name: "c ,", newKeys: ["KeyC", "Comma"] },
+  { id: "b-n", name: "b n", newKeys: ["KeyB", "KeyN"] },
+  { id: "x-period", name: "x .", newKeys: ["KeyX", "Period"] },
+  { id: "z-slash", name: "z /", newKeys: ["KeyZ", "Slash"] },
+  { id: "capitals", name: "capitals", newKeys: letterKeys, layer: 1 },
   {
+    id: "punctuation",
     name: "punctuation",
     newKeys: ["Quote", "Minus", "Equal", "BracketLeft", "BracketRight"],
   },
   {
+    id: "numbers",
     name: "numbers",
     newKeys: [
       "Digit1",
@@ -89,6 +94,10 @@ export const LESSONS: Lesson[] = [
     ],
   },
 ];
+
+export function lessonIndex(id: string): number {
+  return LESSONS.findIndex((lesson) => lesson.id === id);
+}
 
 export type LessonChars = { allowed: string[]; fresh: string[] };
 
@@ -123,22 +132,58 @@ export type WordOptions = {
   minReal: number;
   minLength: number;
   maxLength: number;
+  orderedByFrequency: boolean;
   random: () => number;
 };
 
 const defaultWordOptions: WordOptions = {
-  count: 60,
+  count: 120,
   minReal: 30,
   minLength: 2,
   maxLength: 6,
+  orderedByFrequency: false,
   random: Math.random,
 };
+
+const rankDamping = 10;
+const rankExponent = 0.6;
 
 const vowels = new Set("aeiouyàâäéèêëîïôöùûü");
 const isLetter = (char: string): boolean => /\p{L}/u.test(char);
 
 function pick<T>(items: T[], random: () => number): T | undefined {
   return items[Math.floor(random() * items.length)];
+}
+
+/**
+ * Draws from a frequency-ordered list with weight 1 / (rank + 10) ^ 0.6, so
+ * common words lead without the top ten swamping the rest. An unordered list
+ * draws uniformly.
+ */
+function rankSampler(
+  items: string[],
+  ordered: boolean,
+  random: () => number,
+): () => string | undefined {
+  if (!ordered) return () => pick(items, random);
+  const cumulative: number[] = [];
+  let total = 0;
+  for (let rank = 0; rank < items.length; rank++) {
+    total += 1 / (rank + rankDamping) ** rankExponent;
+    cumulative.push(total);
+  }
+  return () => {
+    if (items.length === 0) return undefined;
+    const target = random() * total;
+    let low = 0;
+    let high = cumulative.length - 1;
+    while (low < high) {
+      const mid = (low + high) >> 1;
+      if ((cumulative[mid] as number) < target) low = mid + 1;
+      else high = mid;
+    }
+    return items[low];
+  };
 }
 
 function pickWeighted(
@@ -189,10 +234,17 @@ function pseudoWord(
   return word;
 }
 
+function capitalised(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
 /**
  * Builds a practice word list from real words made only of allowed characters,
  * topped up with pseudo words when the real list is too short.
- * At least half of the words contain a character introduced by the lesson.
+ * Every character the lesson introduces gets an equal share of the pool: a
+ * word lacking it is swapped for a real word that has it, capitalised when the
+ * lesson introduces capitals, or given the symbol at its end, so real words
+ * are never mutated into gibberish and no new key goes untaught.
  */
 export function buildLessonWords(
   realWords: string[],
@@ -202,7 +254,6 @@ export function buildLessonWords(
   const options = { ...defaultWordOptions, ...overrides };
   const allowed = new Set(chars.allowed);
   const fresh = new Set(chars.fresh);
-  const freshLetters = chars.fresh.filter(isLetter);
   const freshSymbols = chars.fresh.filter((char) => !isLetter(char));
   const letters = chars.allowed.filter(isLetter);
 
@@ -215,6 +266,15 @@ export function buildLessonWords(
       ),
     ),
   ];
+  const drawReal = rankSampler(
+    real,
+    options.orderedByFrequency,
+    options.random,
+  );
+  const drawMatching = (
+    test: (word: string) => boolean,
+  ): (() => string | undefined) =>
+    rankSampler(real.filter(test), options.orderedByFrequency, options.random);
 
   const words: string[] = [];
   while (words.length < options.count) {
@@ -222,31 +282,54 @@ export function buildLessonWords(
       real.length > 0 &&
       (real.length >= options.minReal || options.random() < 0.3);
     const word = useReal
-      ? (pick(real, options.random) ?? "")
+      ? (drawReal() ?? "")
       : pseudoWord(letters, freshSymbols, fresh, options);
     if (word === "") break;
     words.push(word);
   }
 
-  const containsFresh = (word: string): boolean =>
-    [...word].some((char) => fresh.has(char));
-  let withFresh = words.filter(containsFresh).length;
-  for (let i = 0; i < words.length; i++) {
-    if (withFresh >= Math.ceil(words.length / 2)) break;
-    const word = words[i] as string;
-    if (containsFresh(word)) continue;
-    if (freshSymbols.length > 0) {
-      words[i] = word + (pick(freshSymbols, options.random) ?? "");
-    } else if (freshLetters.length > 0) {
-      const at = Math.floor(options.random() * (word.length + 1));
-      words[i] =
-        word.slice(0, at) +
-        (pick(freshLetters, options.random) ?? "") +
-        word.slice(at);
-    } else {
-      break;
+  const lower = (char: string): string => char.toLowerCase();
+  const isUpper = (char: string): boolean =>
+    isLetter(char) && lower(char) !== char;
+  const pseudoWith = (char: string): string => {
+    const pseudo = pseudoWord(letters, freshSymbols, fresh, options);
+    if (isUpper(char)) return char + lower(pseudo.slice(1));
+    if (pseudo.includes(char)) return pseudo;
+    const at = Math.floor(options.random() * (pseudo.length + 1));
+    return pseudo.slice(0, at) + char + pseudo.slice(at);
+  };
+  const replacementFor = (
+    word: string,
+    char: string,
+    draw: () => string | undefined,
+  ): string => {
+    if (!isLetter(char)) return word + char;
+    if (isUpper(char)) {
+      if (word.startsWith(lower(char))) return capitalised(word);
+      const drawn = draw();
+      return drawn === undefined ? pseudoWith(char) : capitalised(drawn);
     }
-    withFresh++;
+    return draw() ?? pseudoWith(char);
+  };
+
+  const quota = Math.max(
+    1,
+    Math.floor(words.length / Math.max(1, chars.fresh.length)),
+  );
+  const touched = new Set<number>();
+  for (const char of chars.fresh) {
+    let have = words.filter((word) => word.includes(char)).length;
+    if (have >= quota) continue;
+    const draw = drawMatching((word) =>
+      isUpper(char) ? word.startsWith(lower(char)) : word.includes(char),
+    );
+    for (let i = 0; i < words.length && have < quota; i++) {
+      const word = words[i] as string;
+      if (touched.has(i) || word.includes(char)) continue;
+      words[i] = replacementFor(word, char, draw);
+      touched.add(i);
+      have++;
+    }
   }
 
   return words;
@@ -259,7 +342,8 @@ const KeyCountSchema = z.object({
 export type KeyCount = z.infer<typeof KeyCountSchema>;
 
 const AttemptSchema = z.object({
-  lesson: z.number().int().nonnegative(),
+  lesson: z.string(),
+  layout: z.string(),
   wpm: z.number().nonnegative(),
   acc: z.number().nonnegative(),
   perKey: z.record(z.string(), KeyCountSchema),
@@ -267,15 +351,50 @@ const AttemptSchema = z.object({
 });
 export type Attempt = z.infer<typeof AttemptSchema>;
 
-export const ProgressSchema = z.object({
-  version: z.literal(1),
+const LayoutProgressSchema = z.object({
   current: z.number().int().nonnegative(),
   unlocked: z.number().int().nonnegative(),
+  best: z.record(z.string(), z.number().nonnegative()),
+});
+export type LayoutProgress = z.infer<typeof LayoutProgressSchema>;
+
+export const ProgressSchema = z.object({
+  version: z.literal(2),
+  layouts: z.record(z.string(), LayoutProgressSchema),
   attempts: z.array(AttemptSchema),
 });
 export type Progress = z.infer<typeof ProgressSchema>;
 
-const maxAttempts = 100;
+export const ProgressV1Schema = z.object({
+  version: z.literal(1),
+  current: z.number().int().nonnegative(),
+  unlocked: z.number().int().nonnegative(),
+  attempts: z.array(
+    z.object({
+      lesson: z.number().int().nonnegative(),
+      wpm: z.number().nonnegative(),
+      acc: z.number().nonnegative(),
+      perKey: z.record(z.string(), KeyCountSchema),
+      ts: z.number().nonnegative(),
+    }),
+  ),
+});
+export type ProgressV1 = z.infer<typeof ProgressV1Schema>;
+
+const maxAttempts = 1000;
+const maxAttemptsPerLesson = 50;
+const v1Layout = "qwerty";
+
+const emptyLayoutProgress = (): LayoutProgress => ({
+  current: 0,
+  unlocked: 0,
+  best: {},
+});
+const emptyProgress = (): Progress => ({
+  version: 2,
+  layouts: {},
+  attempts: [],
+});
 
 export type UnlockCriteria = {
   minAcc: number;
@@ -317,43 +436,248 @@ export function countPerKey(
   return counts;
 }
 
-export function bestWpm(
+function bestByLesson(
   attempts: Attempt[],
-  lesson: number,
-): number | undefined {
-  let best: number | undefined;
+  layout: string,
+): Record<string, number> {
+  const best: Record<string, number> = {};
   for (const attempt of attempts) {
-    if (attempt.lesson !== lesson) continue;
-    if (best === undefined || attempt.wpm > best) best = attempt.wpm;
+    if (attempt.layout !== layout) continue;
+    const known = best[attempt.lesson];
+    if (known === undefined || attempt.wpm > known) {
+      best[attempt.lesson] = attempt.wpm;
+    }
   }
   return best;
 }
 
+export function upgradeProgress(v1: ProgressV1): Progress {
+  const attempts: Attempt[] = [];
+  for (const { lesson, ...rest } of v1.attempts) {
+    const id = LESSONS[lesson]?.id;
+    if (id === undefined) continue;
+    attempts.push({ ...rest, lesson: id, layout: v1Layout });
+  }
+  return {
+    version: 2,
+    layouts: {
+      [v1Layout]: {
+        current: v1.current,
+        unlocked: v1.unlocked,
+        best: bestByLesson(attempts, v1Layout),
+      },
+    },
+    attempts,
+  };
+}
+
+/**
+ * Keeps the newest attempts: at most 50 per lesson and layout, 1000 overall.
+ */
+export function trimAttempts(attempts: Attempt[]): Attempt[] {
+  const seen = new Map<string, number>();
+  const kept: Attempt[] = [];
+  for (let i = attempts.length - 1; i >= 0; i--) {
+    const attempt = attempts[i] as Attempt;
+    const group = `${attempt.layout} ${attempt.lesson}`;
+    const count = seen.get(group) ?? 0;
+    if (count >= maxAttemptsPerLesson) continue;
+    seen.set(group, count + 1);
+    kept.push(attempt);
+    if (kept.length >= maxAttempts) break;
+  }
+  return kept.reverse();
+}
+
+const masteryWindow = 3;
+const masterySampleBudget = 60;
+const maxMasterySamples = 20;
+const minMasterySamples = 3;
+export const masteryErrorRate = 0.03;
+
+export type KeyMastery = { samples: number; errors: number; required: number };
+
+/**
+ * Three attempts of a lesson yield about 60 fresh samples in total, so a wide
+ * lesson such as capitals shares that budget across its keys instead of asking
+ * 20 of each.
+ */
+export function masterySamplesFor(lesson: Lesson): number {
+  return Math.min(
+    maxMasterySamples,
+    Math.max(
+      minMasterySamples,
+      Math.ceil(masterySampleBudget / lesson.newKeys.length),
+    ),
+  );
+}
+
+function attemptsOf(
+  attempts: Attempt[],
+  lesson: string,
+  layout: string,
+): Attempt[] {
+  return attempts.filter(
+    (attempt) => attempt.lesson === lesson && attempt.layout === layout,
+  );
+}
+
+/**
+ * Pools the per-key counts of the last three attempts, so one clean test
+ * cannot mask a key that failed in the two before it.
+ */
+export function masteryOf(
+  attempts: Attempt[],
+  lesson: string,
+  layout: string,
+): Record<string, KeyMastery> {
+  const index = lessonIndex(lesson);
+  const mastery: Record<string, KeyMastery> = {};
+  if (index === -1) return mastery;
+  const item = LESSONS[index] as Lesson;
+  const required = masterySamplesFor(item);
+  for (const keycode of item.newKeys) {
+    mastery[keycode] = { samples: 0, errors: 0, required };
+  }
+  for (const attempt of attemptsOf(attempts, lesson, layout).slice(
+    -masteryWindow,
+  )) {
+    for (const [keycode, count] of Object.entries(attempt.perKey)) {
+      const pooled = mastery[keycode];
+      if (pooled === undefined) continue;
+      pooled.samples += count.total;
+      pooled.errors += count.errors;
+    }
+  }
+  return mastery;
+}
+
+export type WeakKey = { keycode: Keycode } & KeyMastery;
+
+export type UnlockStatus = {
+  ok: boolean;
+  wpmShort: number;
+  accShort: number;
+  weakKeys: WeakKey[];
+};
+
+function errorShare(key: KeyMastery): number {
+  return key.samples === 0 ? 0 : key.errors / key.samples;
+}
+
+export function isWeak(key: KeyMastery): boolean {
+  return (
+    key.samples < key.required || key.errors > key.samples * masteryErrorRate
+  );
+}
+
+/**
+ * Compares the values the result screen shows, so a displayed 30 wpm / 97%
+ * always passes the bar it is measured against.
+ */
+export function unlockStatus(
+  attempts: Attempt[],
+  lesson: string,
+  layout: string,
+  criteria: UnlockCriteria = defaultCriteria,
+): UnlockStatus {
+  const recent = attemptsOf(attempts, lesson, layout).slice(-criteria.window);
+  const latest = recent[recent.length - 1];
+  const wpmShort =
+    latest === undefined
+      ? criteria.minWpm
+      : Math.max(0, criteria.minWpm - Math.round(latest.wpm));
+  const accShort =
+    latest === undefined
+      ? criteria.minAcc
+      : Math.max(0, criteria.minAcc - Math.floor(latest.acc));
+  const floors =
+    recent.length >= criteria.window &&
+    recent.every(
+      (attempt) =>
+        Math.floor(attempt.acc) >= criteria.minAcc &&
+        Math.round(attempt.wpm) >= criteria.minWpm,
+    );
+  const weakKeys = (
+    Object.entries(masteryOf(attempts, lesson, layout)) as [
+      Keycode,
+      KeyMastery,
+    ][]
+  )
+    .filter(([, key]) => isWeak(key))
+    .map(([keycode, key]) => ({ keycode, ...key }))
+    .sort((a, b) => a.samples - b.samples || errorShare(b) - errorShare(a));
+  return { ok: floors && weakKeys.length === 0, wpmShort, accShort, weakKeys };
+}
+
 export function canUnlock(
   attempts: Attempt[],
-  lesson: number,
+  lesson: string,
+  layout: string,
   criteria: UnlockCriteria = defaultCriteria,
 ): boolean {
-  const recent = attempts
-    .filter((attempt) => attempt.lesson === lesson)
-    .slice(-criteria.window);
-  if (recent.length < criteria.window) return false;
-  // compare the values the result screen shows, so a displayed 30 wpm / 97%
-  // always passes the bar it is measured against
-  return recent.every(
-    (attempt) =>
-      Math.floor(attempt.acc) >= criteria.minAcc &&
-      Math.round(attempt.wpm) >= criteria.minWpm,
-  );
+  return unlockStatus(attempts, lesson, layout, criteria).ok;
 }
 
 const [progress, setProgress] = useLocalStorage<Progress>({
   key: "trainerProgress",
   schema: ProgressSchema,
-  fallback: { version: 1, current: 0, unlocked: 0, attempts: [] },
+  fallback: emptyProgress(),
+  migrate: (value) => {
+    const v1 = ProgressV1Schema.safeParse(value);
+    return v1.success ? upgradeProgress(v1.data) : emptyProgress();
+  },
 });
 
 export { progress };
+
+export function progressLayout(): string {
+  return resolveLayoutName(getConfig.layout, getConfig.keymapLayout);
+}
+
+function layoutEntry(layout: string): LayoutProgress {
+  return progress().layouts[layout] ?? emptyLayoutProgress();
+}
+
+export function currentLesson(): number {
+  return layoutEntry(progressLayout()).current;
+}
+
+export function unlockedUpTo(): number {
+  return layoutEntry(progressLayout()).unlocked;
+}
+
+export function bestOf(id: string): number | undefined {
+  return layoutEntry(progressLayout()).best[id];
+}
+
+function updateLayout(
+  current: Progress,
+  layout: string,
+  update: (entry: LayoutProgress) => LayoutProgress,
+): Progress {
+  const entry = current.layouts[layout] ?? emptyLayoutProgress();
+  const next = update(entry);
+  return next === entry
+    ? current
+    : { ...current, layouts: { ...current.layouts, [layout]: next } };
+}
+
+function unlockedAfterSync(
+  attempts: Attempt[],
+  layout: string,
+  unlocked: number,
+  criteria: UnlockCriteria,
+): number {
+  let next = unlocked;
+  while (
+    next + 1 < LESSONS.length &&
+    unlockStatus(attempts, (LESSONS[next] as Lesson).id, layout, criteria).ok
+  ) {
+    next++;
+  }
+  return next;
+}
 
 /**
  * Re-evaluates the stored attempts against the current criteria, so a change to
@@ -363,14 +687,23 @@ export { progress };
 function syncUnlocked(): void {
   const criteria = criteriaFor(Config.trainerUnlock);
   setProgress((current) => {
-    let unlocked = current.unlocked;
-    while (
-      unlocked + 1 < LESSONS.length &&
-      canUnlock(current.attempts, unlocked, criteria)
-    ) {
-      unlocked++;
+    const layouts = new Set([
+      ...Object.keys(current.layouts),
+      ...current.attempts.map((attempt) => attempt.layout),
+    ]);
+    let next = current;
+    for (const layout of layouts) {
+      next = updateLayout(next, layout, (entry) => {
+        const unlocked = unlockedAfterSync(
+          current.attempts,
+          layout,
+          entry.unlocked,
+          criteria,
+        );
+        return unlocked === entry.unlocked ? entry : { ...entry, unlocked };
+      });
     }
-    return unlocked === current.unlocked ? current : { ...current, unlocked };
+    return next;
   });
 }
 
@@ -381,7 +714,11 @@ configEvent.subscribe(({ key }) => {
 });
 
 export function setCurrentLesson(index: number): void {
-  setProgress((current) => ({ ...current, current: index }));
+  setProgress((current) =>
+    updateLayout(current, progressLayout(), (entry) =>
+      entry.current === index ? entry : { ...entry, current: index },
+    ),
+  );
 }
 
 /**
@@ -389,26 +726,39 @@ export function setCurrentLesson(index: number): void {
  * @returns true when a new lesson was unlocked
  */
 export function recordAttempt(attempt: Attempt): boolean {
-  if (LESSONS[attempt.lesson] === undefined) return false;
+  const index = lessonIndex(attempt.lesson);
+  if (index === -1) return false;
   let unlockedNow = false;
   setProgress((current) => {
-    const attempts = [...current.attempts, attempt].slice(-maxAttempts);
-    const next = attempt.lesson + 1;
-    unlockedNow =
-      next < LESSONS.length &&
-      current.unlocked < next &&
-      canUnlock(attempts, attempt.lesson, criteriaFor(Config.trainerUnlock));
-    return {
-      ...current,
-      attempts,
-      unlocked: unlockedNow ? next : current.unlocked,
-    };
+    const attempts = trimAttempts([...current.attempts, attempt]);
+    const next = index + 1;
+    return updateLayout({ ...current, attempts }, attempt.layout, (entry) => {
+      unlockedNow =
+        next < LESSONS.length &&
+        entry.unlocked < next &&
+        unlockStatus(
+          attempts,
+          attempt.lesson,
+          attempt.layout,
+          criteriaFor(Config.trainerUnlock),
+        ).ok;
+      const known = entry.best[attempt.lesson];
+      return {
+        ...entry,
+        unlocked: unlockedNow ? next : entry.unlocked,
+        best: {
+          ...entry.best,
+          [attempt.lesson]:
+            known === undefined ? attempt.wpm : Math.max(known, attempt.wpm),
+        },
+      };
+    });
   });
   return unlockedNow;
 }
 
 export function resetProgress(): void {
-  setProgress({ version: 1, current: 0, unlocked: 0, attempts: [] });
+  setProgress(emptyProgress());
 }
 
 export function replaceProgress(data: Progress): void {

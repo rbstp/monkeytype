@@ -6,21 +6,30 @@ import {
   replaceKeyStats,
   upgradeKeyStats,
 } from "./key-stats";
-import { progress, ProgressSchema, replaceProgress } from "./lessons";
+import {
+  progress,
+  ProgressSchema,
+  ProgressV1Schema,
+  replaceProgress,
+  upgradeProgress,
+} from "./lessons";
 
 export const BackupSchema = z.object({
-  version: z.literal(1),
+  version: z.union([z.literal(1), z.literal(2)]).transform(() => 2 as const),
   keyStats: z.union([
     KeyStatsSchema,
     KeyStatsV1Schema.transform(upgradeKeyStats),
   ]),
-  progress: ProgressSchema,
+  progress: z.union([
+    ProgressSchema,
+    ProgressV1Schema.transform(upgradeProgress),
+  ]),
 });
 export type Backup = z.infer<typeof BackupSchema>;
 
 export function exportBackup(): string {
   const backup: Backup = {
-    version: 1,
+    version: 2,
     keyStats: getKeyStats(),
     progress: progress(),
   };

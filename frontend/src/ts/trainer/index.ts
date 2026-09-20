@@ -1,10 +1,16 @@
 import { CompletedEvent } from "@monkeytype/schemas/results";
 import { Config } from "../config/store";
-import { showSuccessNotification } from "../states/notifications";
+import {
+  showNoticeNotification,
+  showSuccessNotification,
+} from "../states/notifications";
 import { __nonReactive } from "../states/test";
 import { EventLog } from "../test/events/types";
+import { keycodeToLayoutKey } from "../utils/key-converter";
 import { resolveLayoutName } from "../utils/layout-name";
+import { drillSummary } from "./drill";
 import {
+  getLayoutStats,
   layoutStatsName,
   recordSamples,
   samplesFromEventLog,
@@ -14,9 +20,10 @@ import {
   isLessonText,
   lessonChars,
   LESSONS,
+  progressLayout,
   recordAttempt,
 } from "./lessons";
-import { getActiveLesson } from "./session";
+import { getActiveDrill, getActiveLesson } from "./session";
 
 export { tracksNextKey } from "./session";
 
@@ -24,11 +31,13 @@ export type FinishedTest = {
   eventLog: EventLog;
   completedEvent: CompletedEvent;
   invalid: boolean;
+  /** false when the test is invalid for a reason other than the accuracy gate */
+  samplesUsable: boolean;
   countsForLesson: boolean;
 };
 
 export function onTestFinished(test: FinishedTest): void {
-  if (test.invalid || test.eventLog.context.mode === "zen") return;
+  if (!test.samplesUsable || test.eventLog.context.mode === "zen") return;
 
   const layoutName = layoutStatsName(
     resolveLayoutName(Config.layout, Config.keymapLayout),
@@ -39,6 +48,7 @@ export function onTestFinished(test: FinishedTest): void {
   const recordLesson =
     lessonIndex !== null &&
     lesson !== undefined &&
+    !test.invalid &&
     test.countsForLesson &&
     !test.completedEvent.bailedOut &&
     Config.mode === "custom";
@@ -49,6 +59,17 @@ export function onTestFinished(test: FinishedTest): void {
     .then((layout) => {
       const samples = samplesFromEventLog(test.eventLog, layout);
       if (recordKeys) recordSamples(layoutName, samples);
+      const drill = getActiveDrill();
+      if (drill !== null && recordKeys) {
+        showNoticeNotification(
+          drillSummary(
+            drill,
+            getLayoutStats(layoutName),
+            (keycode) => keycodeToLayoutKey(keycode, layout) ?? keycode,
+          ),
+          { durationMs: 8000 },
+        );
+      }
       if (
         !recordLesson ||
         !isLessonText(
@@ -60,7 +81,8 @@ export function onTestFinished(test: FinishedTest): void {
       }
 
       const unlocked = recordAttempt({
-        lesson: lessonIndex,
+        lesson: lesson.id,
+        layout: progressLayout(),
         wpm: test.completedEvent.wpm,
         acc: test.completedEvent.acc,
         perKey: countPerKey(samples, lesson),

@@ -17,21 +17,36 @@ import * as CustomText from "../../src/ts/test/custom-text";
 import { EventLog } from "../../src/ts/test/events/types";
 import * as PractiseWords from "../../src/ts/test/practise-words";
 import { onTestFinished } from "../../src/ts/trainer";
-import { getKeyStats, resetKeyStats } from "../../src/ts/trainer/key-stats";
+import {
+  getKeyStats,
+  KeySample,
+  recordSamples,
+  resetKeyStats,
+} from "../../src/ts/trainer/key-stats";
+import * as Lessons from "../../src/ts/trainer/lessons";
 import {
   Attempt,
+  currentLesson,
   isLessonText,
   lessonChars,
+  LESSONS,
   progress,
+  Progress,
   recordAttempt,
   replaceProgress,
   resetProgress,
+  unlockedUpTo,
 } from "../../src/ts/trainer/lessons";
 import {
+  getActiveDrill,
   getActiveLesson,
+  isSessionActive,
+  largestCorpus,
   startLesson,
+  startSession,
   stopLesson,
 } from "../../src/ts/trainer/session";
+import { startDrill } from "../../src/ts/trainer/drill";
 import * as JsonData from "../../src/ts/utils/json-data";
 
 vi.mock("../../src/ts/test/events/stats", () => ({
@@ -49,7 +64,13 @@ const qwerty = JSON.parse(
 
 const { replaceConfig } = __testing;
 
-function finished(targetWords: string[]): void {
+type FinishedFlags = {
+  invalid?: boolean;
+  samplesUsable?: boolean;
+  countsForLesson?: boolean;
+};
+
+function finished(targetWords: string[], flags: FinishedFlags = {}): void {
   const eventLog: EventLog = {
     version: 1,
     events: [
@@ -78,12 +99,28 @@ function finished(targetWords: string[]): void {
     eventLog,
     completedEvent: { wpm: 40, acc: 100, bailedOut: false } as CompletedEvent,
     invalid: false,
+    samplesUsable: true,
     countsForLesson: true,
+    ...flags,
   });
 }
 
 const flush = async (): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, 0));
+
+function attemptFor(lesson: string, samples: number): Attempt {
+  const keys = LESSONS.find((item) => item.id === lesson)?.newKeys ?? [];
+  return {
+    lesson,
+    layout: "qwerty",
+    wpm: 40,
+    acc: 100,
+    perKey: Object.fromEntries(
+      keys.map((keycode) => [keycode, { total: samples, errors: 0 }]),
+    ),
+    ts: 0,
+  };
+}
 
 describe("trainer session", () => {
   const getInputLayoutMock = vi
@@ -96,6 +133,9 @@ describe("trainer session", () => {
   const noticeMock = vi
     .spyOn(Notifications, "showNoticeNotification")
     .mockReturnValue(0);
+  const successMock = vi
+    .spyOn(Notifications, "showSuccessNotification")
+    .mockReturnValue(0);
   const saveConfigMock = vi.spyOn(ApeConfig, "saveConfig").mockResolvedValue();
 
   beforeEach(() => {
@@ -103,6 +143,7 @@ describe("trainer session", () => {
     resetProgress();
     resetKeyStats();
     noticeMock.mockClear();
+    successMock.mockClear();
     saveConfigMock.mockClear();
     replaceConfig({ mode: "time", punctuation: true, numbers: false });
     CustomText.setText(["before"]);
@@ -113,7 +154,59 @@ describe("trainer session", () => {
     getInputLayoutMock.mockRestore();
     getLanguageMock.mockRestore();
     noticeMock.mockRestore();
+    successMock.mockRestore();
     saveConfigMock.mockRestore();
+  });
+
+  describe("corpus", () => {
+    it("names the biggest word list that exists", () => {
+      const exists = (name: string): boolean =>
+        [
+          "english",
+          "english_1k",
+          "english_10k",
+          "french",
+          "french_1k",
+        ].includes(name);
+      expect(largestCorpus("english", exists)).toBe("english_10k");
+      expect(largestCorpus("english_1k", exists)).toBe("english_10k");
+      expect(largestCorpus("french", exists)).toBe("french_1k");
+      expect(largestCorpus("code_python", exists)).toBe("code_python");
+      expect(largestCorpus("english")).toBe("english_10k");
+      expect(largestCorpus("bashkir")).toBe("bashkir");
+    });
+
+    it("loads the biggest corpus for the configured language", async () => {
+      getLanguageMock.mockClear();
+      replaceConfig({ mode: "time", language: "english" });
+      expect(await startLesson(0)).toBe(true);
+      expect(getLanguageMock).toHaveBeenCalledWith("english_10k");
+      expect(getLanguageMock).not.toHaveBeenCalledWith("english");
+    });
+
+    it("passes the frequency order of the corpus to the word builder", async () => {
+      const buildSpy = vi.spyOn(Lessons, "buildLessonWords");
+      getLanguageMock.mockResolvedValueOnce({
+        name: "english_10k",
+        orderedByFrequency: true,
+        words: ["as", "all", "sad", "fall", "lass", "flask"],
+      } as never);
+      expect(await startLesson(0)).toBe(true);
+      expect(buildSpy).toHaveBeenLastCalledWith(
+        expect.any(Array),
+        expect.anything(),
+        { orderedByFrequency: true },
+      );
+      expect(CustomText.getText()).toHaveLength(120);
+
+      await startLesson(0);
+      expect(buildSpy).toHaveBeenLastCalledWith(
+        expect.any(Array),
+        expect.anything(),
+        { orderedByFrequency: false },
+      );
+      buildSpy.mockRestore();
+    });
   });
 
   it("applies the lesson config and restores it on stop", async () => {
@@ -284,11 +377,22 @@ describe("trainer session", () => {
 
   describe("settings", () => {
     const attempt = (wpm: number, acc: number): Attempt => ({
-      lesson: 0,
+      lesson: "home-row",
+      layout: "qwerty",
       wpm,
       acc,
-      perKey: {},
+      perKey: Object.fromEntries(
+        (LESSONS[0]?.newKeys ?? []).map((keycode) => [
+          keycode,
+          { total: 20, errors: 0 },
+        ]),
+      ),
       ts: 0,
+    });
+    const stored = (attempts: Attempt[]): Progress => ({
+      version: 2 as const,
+      layouts: {},
+      attempts,
     });
 
     it("sizes the lesson from trainerWordsPerTest", async () => {
@@ -353,37 +457,195 @@ describe("trainer session", () => {
     it("judges an attempt against the configured bar", () => {
       replaceConfig({ trainerUnlock: "strict" });
       expect(recordAttempt(attempt(36, 99))).toBe(false);
-      expect(progress().unlocked).toBe(0);
+      expect(unlockedUpTo()).toBe(0);
       expect(recordAttempt(attempt(36, 99))).toBe(true);
-      expect(progress().unlocked).toBe(1);
+      expect(unlockedUpTo()).toBe(1);
     });
 
     it("re-evaluates stored attempts when the bar changes", () => {
-      replaceProgress({
-        version: 1,
-        current: 0,
-        unlocked: 0,
-        attempts: [attempt(26, 96)],
-      });
-      expect(progress().unlocked).toBe(0);
+      replaceProgress(stored([attempt(26, 96)]));
+      expect(unlockedUpTo()).toBe(0);
       expect(setConfig("trainerUnlock", "relaxed")).toBe(true);
-      expect(progress().unlocked).toBe(1);
+      expect(unlockedUpTo()).toBe(1);
       expect(setConfig("trainerUnlock", "strict")).toBe(true);
-      expect(progress().unlocked).toBe(1);
+      expect(unlockedUpTo()).toBe(1);
     });
 
     it("re-evaluates stored attempts once the config loads", async () => {
-      replaceProgress({
-        version: 1,
-        current: 0,
-        unlocked: 0,
-        attempts: [attempt(26, 96)],
-      });
+      replaceProgress(stored([attempt(26, 96)]));
       await Lifecycle.applyConfig({
         ...getDefaultConfig(),
         trainerUnlock: "relaxed",
       });
-      expect(progress().unlocked).toBe(1);
+      expect(unlockedUpTo()).toBe(1);
+    });
+  });
+
+  describe("sessions", () => {
+    it("starts a timed session without a lesson", async () => {
+      expect(
+        await startSession({
+          words: ["as", "sad"],
+          indicator: "drill: a s",
+          limit: { mode: "time", value: 30 },
+        }),
+      ).toBe(true);
+      expect(getActiveLesson()).toBeNull();
+      expect(isSessionActive()).toBe(false);
+      expect(Config.mode).toBe("custom");
+      expect(CustomText.getText()).toEqual(["as", "sad"]);
+      expect(CustomText.getLimitMode()).toBe("time");
+      expect(CustomText.getLimitValue()).toBe(30);
+      expect(Core.getCustomTextIndicator()?.name).toBe("drill: a s");
+
+      stopLesson();
+      expect(Config.mode).toBe("time");
+      expect(CustomText.getText()).toEqual(["before"]);
+    });
+
+    it("refuses an empty pool", async () => {
+      expect(
+        await startSession({
+          words: [],
+          indicator: "x",
+          limit: { mode: "word", value: 10 },
+        }),
+      ).toBe(false);
+      expect(Config.mode).toBe("time");
+    });
+
+    it("replaces a lesson with a drill and back", async () => {
+      await startLesson(0);
+      expect(
+        await startSession({
+          words: ["as"],
+          indicator: "drill",
+          limit: { mode: "time", value: 30 },
+          drill: { keys: ["KeyA"], before: { KeyA: 300 } },
+        }),
+      ).toBe(true);
+      expect(getActiveLesson()).toBeNull();
+      expect(getActiveDrill()).toEqual({
+        keys: ["KeyA"],
+        before: { KeyA: 300 },
+      });
+      expect(isSessionActive()).toBe(true);
+
+      await startLesson(1);
+      expect(getActiveDrill()).toBeNull();
+      expect(getActiveLesson()).toBe(1);
+
+      stopLesson();
+      expect(Config.mode).toBe("time");
+      expect(Config.punctuation).toBe(true);
+    });
+
+    it("stops a drill when a watched key changes", async () => {
+      replaceConfig({ mode: "time", punctuation: false });
+      await startSession({
+        words: ["as"],
+        indicator: "drill",
+        limit: { mode: "time", value: 30 },
+        drill: { keys: ["KeyA"], before: {} },
+      });
+      expect(setConfig("punctuation", true)).toBe(true);
+      expect(getActiveDrill()).toBeNull();
+      expect(Config.mode).toBe("time");
+      expect(Config.punctuation).toBe(true);
+    });
+
+    it("ignores words per test during a drill", async () => {
+      await startSession({
+        words: ["as"],
+        indicator: "drill",
+        limit: { mode: "time", value: 30 },
+        drill: { keys: ["KeyA"], before: {} },
+      });
+      expect(setConfig("trainerWordsPerTest", 20)).toBe(true);
+      expect(CustomText.getLimitMode()).toBe("time");
+      expect(CustomText.getLimitValue()).toBe(30);
+      expect(getActiveDrill()).not.toBeNull();
+    });
+  });
+
+  describe("drill", () => {
+    const samples = (
+      keycode: "KeyK" | "KeyD" | "KeyF" | "KeyA",
+      ms: number,
+    ): KeySample[] =>
+      Array.from({ length: 6 }, () => ({
+        keycode,
+        shifted: false,
+        correct: keycode !== "KeyK",
+        spacingMs: ms,
+      }));
+
+    it("needs key stats first", async () => {
+      expect(await startDrill()).toBe(false);
+      expect(noticeMock).toHaveBeenCalledWith(
+        "No key stats for this layout yet.",
+      );
+      expect(Config.mode).toBe("time");
+    });
+
+    it("drills the three worst keys for 30 seconds and records samples but no attempt", async () => {
+      recordSamples("qwerty", [
+        ...samples("KeyK", 900),
+        ...samples("KeyD", 700),
+        ...samples("KeyF", 650),
+        ...samples("KeyA", 200),
+      ]);
+      const before = getKeyStats().layouts["qwerty"]?.["KeyD"]?.total;
+
+      expect(await startDrill()).toBe(true);
+      expect(getActiveLesson()).toBeNull();
+      expect(getActiveDrill()?.keys).toEqual(["KeyK", "KeyD", "KeyF"]);
+      expect(getActiveDrill()?.before).toMatchObject({ KeyD: 700 });
+      expect(CustomText.getLimitMode()).toBe("time");
+      expect(CustomText.getLimitValue()).toBe(30);
+      expect(Core.getCustomTextIndicator()?.name).toBe("drill: k d f");
+      expect(CustomText.getText().length).toBeGreaterThan(30);
+      expect(
+        CustomText.getText().filter((word) => /[kdf]/.test(word)).length,
+      ).toBeGreaterThan(CustomText.getText().length / 2);
+
+      finished(["dad "]);
+      await flush();
+
+      expect(progress().attempts).toHaveLength(0);
+      expect(getKeyStats().layouts["qwerty"]?.["KeyD"]?.total).toBe(
+        (before ?? 0) + 1,
+      );
+      expect(noticeMock).toHaveBeenCalledWith(
+        "k: no time to no time, d: 700 ms to 700 ms, f: 650 ms to 650 ms",
+        { durationMs: 8000 },
+      );
+    });
+  });
+
+  describe("samplesUsable", () => {
+    it("records samples but no attempt when only the accuracy gate failed", async () => {
+      await startLesson(0);
+      finished(["as ", "sad "], {
+        invalid: true,
+        samplesUsable: true,
+        countsForLesson: false,
+      });
+      await flush();
+      expect(getKeyStats().layouts["qwerty"]?.["KeyA"]?.total).toBe(1);
+      expect(progress().attempts).toHaveLength(0);
+    });
+
+    it("records nothing when the test is invalid for another reason", async () => {
+      await startLesson(0);
+      finished(["as ", "sad "], {
+        invalid: true,
+        samplesUsable: false,
+        countsForLesson: false,
+      });
+      await flush();
+      expect(getKeyStats().layouts["qwerty"]).toBeUndefined();
+      expect(progress().attempts).toHaveLength(0);
     });
   });
 
@@ -415,6 +677,53 @@ describe("trainer session", () => {
       finished(["as ", "sad ", "fall "]);
       await flush();
       expect(progress().attempts).toHaveLength(1);
+      expect(progress().attempts[0]).toMatchObject({
+        lesson: "home-row",
+        layout: "qwerty",
+        wpm: 40,
+      });
+      expect(currentLesson()).toBe(0);
+      expect(progress().layouts["qwerty"]?.best).toEqual({ "home-row": 40 });
+    });
+
+    it("passes the floors on one key without a toast or an unlock", async () => {
+      await startLesson(0);
+
+      finished(["as ", "sad ", "fall "]);
+      await flush();
+
+      expect(progress().attempts[0]?.perKey).toEqual({
+        KeyA: { total: 1, errors: 0 },
+      });
+      expect(unlockedUpTo()).toBe(0);
+      expect(successMock).not.toHaveBeenCalled();
+    });
+
+    it("toasts the unlock once every new key is mastered", async () => {
+      await startLesson(0);
+      replaceProgress({
+        version: 2,
+        layouts: {},
+        attempts: [
+          {
+            ...attemptFor("home-row", 8),
+            perKey: {
+              ...attemptFor("home-row", 8).perKey,
+              KeyA: { total: 7, errors: 0 },
+            },
+          },
+        ],
+      });
+      expect(unlockedUpTo()).toBe(0);
+
+      finished(["as ", "sad ", "fall "]);
+      await flush();
+
+      expect(unlockedUpTo()).toBe(1);
+      expect(successMock).toHaveBeenCalledWith(
+        "Lesson 2 unlocked: e i",
+        expect.anything(),
+      );
     });
 
     it("records key samples under the keymap layout for a default layout", async () => {

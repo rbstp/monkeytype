@@ -1,9 +1,16 @@
-import { untrack } from "solid-js";
+import { createSignal, untrack } from "solid-js";
 import { z } from "zod";
 import { FunboxSchema } from "@monkeytype/schemas/configs";
+import {
+  Language,
+  LanguageObject,
+  LanguageSchema,
+} from "@monkeytype/schemas/languages";
 import { CustomTextSettingsSchema } from "@monkeytype/schemas/results";
 import { ModeSchema } from "@monkeytype/schemas/shared";
+import { CustomTextLimitMode } from "@monkeytype/schemas/util";
 import { Config } from "../config/store";
+import { Keycode } from "../constants/keys";
 import {
   saveFullConfigToLocalStorage,
   setPersistedConfigHook,
@@ -59,11 +66,26 @@ const [activeLesson, setActiveLesson] = useLocalStorage<number | null>({
   fallback: null,
 });
 
+export type Drill = {
+  keys: Keycode[];
+  before: Partial<Record<Keycode, number>>;
+};
+
+const [activeDrill, setActiveDrill] = createSignal<Drill | null>(null);
+
 let applying = false;
 let inFullConfigChange = false;
 
 export function getActiveLesson(): number | null {
   return activeLesson();
+}
+
+export function getActiveDrill(): Drill | null {
+  return activeDrill();
+}
+
+export function isSessionActive(): boolean {
+  return activeLesson() !== null || activeDrill() !== null;
 }
 
 /**
@@ -136,9 +158,69 @@ function restore(previous: Snapshot, restoreMode: boolean): void {
   setSnapshot(null);
 }
 
+const corpusSuffixes = ["_10k", "_5k", "_1k", ""] as const;
+
 /**
- * Prepares a custom test for the lesson. The caller restarts the test.
+ * Names the biggest word list that exists for a language, so lessons draw from
+ * english_10k instead of the 200 words of english.
  */
+export function largestCorpus(
+  language: string,
+  exists: (name: string) => boolean = (name) =>
+    LanguageSchema.safeParse(name).success,
+): string {
+  const base = language.replace(/_\d+k$/, "");
+  for (const suffix of corpusSuffixes) {
+    if (exists(`${base}${suffix}`)) return `${base}${suffix}`;
+  }
+  return language;
+}
+
+export async function loadCorpus(language: Language): Promise<LanguageObject> {
+  return getLanguage(largestCorpus(language) as Language);
+}
+
+export type SessionOptions = {
+  words: string[];
+  indicator: string;
+  limit: { mode: CustomTextLimitMode; value: number };
+  drill?: Drill;
+};
+
+/**
+ * Prepares a custom test from a word pool, snapshotting the config it
+ * replaces. The caller restarts the test. A drill session never records a
+ * lesson attempt, so the active lesson is cleared here.
+ */
+export async function startSession(options: SessionOptions): Promise<boolean> {
+  if (isTestActive()) {
+    showNoticeNotification("Finish the current test first.");
+    return false;
+  }
+  if (options.words.length === 0) {
+    showNoticeNotification("This layout has no keys for this lesson.");
+    return false;
+  }
+
+  const previous = snapshot() ?? takeSnapshot();
+  setActiveLesson(null);
+  setActiveDrill(null);
+  if (!applyLessonConfig()) {
+    restore(previous, true);
+    return false;
+  }
+  setSnapshot(previous);
+  applyCustomText({
+    text: options.words,
+    mode: "random",
+    limit: options.limit,
+    pipeDelimiter: false,
+  });
+  setCustomTextIndicator({ name: options.indicator, isLong: false });
+  setActiveDrill(options.drill ?? null);
+  return true;
+}
+
 export async function startLesson(index: number): Promise<boolean> {
   const lesson = LESSONS[index];
   if (lesson === undefined) return false;
@@ -149,31 +231,17 @@ export async function startLesson(index: number): Promise<boolean> {
 
   const [layout, language] = await Promise.all([
     __nonReactive.getInputLayout(),
-    getLanguage(Config.language),
+    loadCorpus(Config.language),
   ]);
-  const words = buildLessonWords(language.words, lessonChars(index, layout));
-  if (words.length === 0) {
-    showNoticeNotification("This layout has no keys for this lesson.");
-    return false;
-  }
-
-  const previous = snapshot() ?? takeSnapshot();
-  if (!applyLessonConfig()) {
-    setActiveLesson(null);
-    restore(previous, true);
-    return false;
-  }
-  setSnapshot(previous);
-  applyCustomText({
-    text: words,
-    mode: "random",
+  const words = buildLessonWords(language.words, lessonChars(index, layout), {
+    orderedByFrequency: language.orderedByFrequency === true,
+  });
+  const started = await startSession({
+    words,
+    indicator: `lesson ${index + 1}: ${lesson.name}`,
     limit: { mode: "word", value: Config.trainerWordsPerTest },
-    pipeDelimiter: false,
   });
-  setCustomTextIndicator({
-    name: `lesson ${index + 1}: ${lesson.name}`,
-    isLong: false,
-  });
+  if (!started) return false;
 
   setActiveLesson(index);
   setCurrentLesson(index);
@@ -200,6 +268,7 @@ function resumeLesson(index: number): void {
 
 export function stopLesson(options = { restoreMode: true }): void {
   setActiveLesson(null);
+  setActiveDrill(null);
   const previous = snapshot();
   if (previous !== null) restore(previous, options.restoreMode);
 }
@@ -226,6 +295,7 @@ configEvent.subscribe(({ key, newValue, previousValue }) => {
     const lesson = activeLesson();
     const previous = snapshot();
     if (lesson === null) {
+      setActiveDrill(null);
       if (previous !== null) restore(previous, true);
       return;
     }
@@ -250,10 +320,11 @@ configEvent.subscribe(({ key, newValue, previousValue }) => {
   // a full config change replays every key, which would look like the user
   // leaving the lesson
   if (inFullConfigChange) return;
-  if (activeLesson() === null) return;
+  if (!isSessionActive()) return;
   if (key === "mode") {
     stopLesson({ restoreMode: false });
   } else if (key === "trainerWordsPerTest") {
+    if (activeLesson() === null) return;
     CustomText.setLimitValue(newValue);
     if (getActivePage() === "test") restartTestEvent.dispatch();
   } else if (
@@ -270,7 +341,7 @@ configEvent.subscribe(({ key, newValue, previousValue }) => {
 setPersistedConfigHook((config) =>
   untrack(() => {
     const previous = snapshot();
-    if (activeLesson() === null || previous === null) return config;
+    if (!isSessionActive() || previous === null) return config;
     return {
       ...config,
       mode: previous.mode,
