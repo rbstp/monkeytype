@@ -18,7 +18,7 @@ Gaps:
 - The key EMA is not a speed: a 5000 ms error penalty at key-stats.ts:27,84-86, backspace and pause time charged to the next key at key-stats.ts:51-59, shift ignored at key-stats.ts:95-111. Panel and tips print it as ms.
 - Unlocks are one lucky test: canUnlock at lessons.ts:297-313 uses window 1 and test-level numbers; perKey from index.ts:47 is read nowhere.
 - Early lessons are gibberish: english.json has 3 home-row words, so with minReal 30 at lessons.ts:118 lessons 1-4 are mostly "afa sas dad" from lessons.ts:142-171. The pool is built once at session.ts:126-150.
-- Layout is assumed qwerty: names hardcoded at lessons.ts:57-67, "default" mapped to qwerty at states/test.ts:185, progress global at lessons.ts:257-262.
+- Layout is assumed qwerty: names hardcoded at lessons.ts:57-67, progress global at lessons.ts:257-262. "default" now resolves through keymapLayout in utils/layout-name.ts; commit C still owes per-layout progress.
 - Config leaks: lifecycle.ts:110-111 fires the finished event before the store is set, preset-controller.ts:46 saves lesson values to the account, session.ts:209-213 lets punctuation alter scored text.
 - No escape hatch: no migrate at lessons.ts:315-319, a global 100-attempt cap at lessons.ts:265, a v1-literal backup replaced on import at backup.ts:5-9,30-36.
 
@@ -139,7 +139,7 @@ Risk: the layout emulator has no dead-key state, so the French track only works 
 
 Reloads, presets and login stop desyncing the lesson. Unlocks cannot be earned on altered text.
 
-Commit A: swap two lines in lifecycle.ts and refresh the snapshot on the finished event; stop the lesson on watched-key, layout and language changes; gate attempt recording on all target chars being allowed, which also catches Custom Text edits. Commit B: resolve "default" to the real layout name. Commit C: Progress v2 with lesson ids, a layout field and a larger attempt cap, backup v2 that migrates on import. Schema bumps are fine by decision 5; a discriminated union never triggers migrate, so bump the version literal instead.
+Commit A: swap two lines in lifecycle.ts and refresh the snapshot on the finished event; stop the lesson on watched-key, layout and language changes; gate attempt recording on all target chars being allowed, which also catches Custom Text edits. Commit B: resolve "default" to the real layout name (done). Commit C: Progress v2 with lesson ids, a layout field and a larger attempt cap, backup v2 that migrates on import. Schema bumps are fine by decision 5; a discriminated union never triggers migrate, so bump the version literal instead.
 
 First slice: commit A, session hardening plus a session spec, about 80 lines.
 
@@ -153,7 +153,7 @@ lessonLegends exists, so names are about 40 lines. A layer "auto" resolved with 
 
 First slice: legend-derived names plus auto layer for numbers, no storage change.
 
-Risk: only helps once foundations B resolves the real layout.
+Unblocked by foundations B, which resolves the real layout.
 
 ### Keymap heatmap
 
@@ -185,7 +185,7 @@ Dropped by decision 2. Kept here for the record: stage one was a managed trainer
 2. preset-controller.ts:46 saves lesson values to the account; the snapshot at session.ts:22-30 is never refreshed.
 3. session.ts:209-213 only rewrites the snapshot on watched keys; layout and language unwatched; altered text still scored.
 4. practise-words.ts:153-162 silently drops the lesson; the next restart reverts to lesson words.
-5. states/test.ts:185 and key-stats.ts:38 map "default" to qwerty.
+5. states/test.ts:185 and key-stats.ts:38 map "default" to qwerty. Resolved through keymapLayout in utils/layout-name.ts; per-layout progress remains for commit C.
 6. key-stats.ts:27,84-86 folds a 5000 ms penalty into a value shown as ms.
 7. key-stats.ts:51-59 skips deletes without advancing the clock; no pause cap.
 8. key-stats.ts:95-111 ignores sample.shifted.
@@ -199,7 +199,7 @@ Dropped by decision 2. Kept here for the record: stage one was a managed trainer
 Now, the page and the signals everything reads:
 
 1. foundations A: session hardening with a session spec. Done in `fix(trainer): harden the lesson session against config changes`; covers foundation items 1 to 4 above.
-2. foundations B: resolve "default" to the real layout name.
+2. foundations B: resolve "default" to the real layout name. Done in `fix(trainer): resolve the default layout through the keymap layout`; covers foundation item 5 above.
 3. trainer-page: skeleton, lesson map, continue button, shared beginLesson action.
 4. feedback-loop: the lesson chip on the test screen.
 5. trainer-settings: trainerUnlock and trainerWordsPerTest as Config keys.

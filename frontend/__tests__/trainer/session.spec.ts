@@ -307,6 +307,16 @@ describe("trainer session", () => {
       expect(progress().attempts).toHaveLength(1);
     });
 
+    it("records key samples under the keymap layout for a default layout", async () => {
+      replaceConfig({ mode: "words", keymapLayout: "canadian_french" });
+
+      finished(["as "]);
+      await flush();
+
+      expect(getKeyStats().layouts["qwerty"]).toBeUndefined();
+      expect(getKeyStats().layouts["canadian_french"]?.["KeyA"]?.total).toBe(1);
+    });
+
     it("skips key samples while layoutfluid is active", async () => {
       replaceConfig({ mode: "words", funbox: ["layoutfluid"] });
 

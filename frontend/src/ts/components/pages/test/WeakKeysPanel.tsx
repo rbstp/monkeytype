@@ -14,12 +14,18 @@ import {
 } from "../../../trainer/key-stats";
 import { buildTips } from "../../../trainer/tips";
 import { keycodeToLayoutKey } from "../../../utils/key-converter";
+import { resolveLayoutName } from "../../../utils/layout-name";
 
 const shownKeys = 8;
 
 export function WeakKeysPanel() {
   const stats = createMemo(() =>
-    getLayoutStats(layoutStatsName(getConfig.layout, getConfig.funbox)),
+    getLayoutStats(
+      layoutStatsName(
+        resolveLayoutName(getConfig.layout, getConfig.keymapLayout),
+        getConfig.funbox,
+      ),
+    ),
   );
   const keys = createMemo(() => worstKeys(stats(), shownKeys));
   const fingers = createMemo(() => fingerSummary(stats()));

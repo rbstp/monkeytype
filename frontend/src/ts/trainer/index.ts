@@ -3,6 +3,7 @@ import { Config } from "../config/store";
 import { showSuccessNotification } from "../states/notifications";
 import { __nonReactive } from "../states/test";
 import { EventLog } from "../test/events/types";
+import { resolveLayoutName } from "../utils/layout-name";
 import {
   layoutStatsName,
   recordSamples,
@@ -29,7 +30,10 @@ export type FinishedTest = {
 export function onTestFinished(test: FinishedTest): void {
   if (test.invalid || test.eventLog.context.mode === "zen") return;
 
-  const layoutName = layoutStatsName(Config.layout, Config.funbox);
+  const layoutName = layoutStatsName(
+    resolveLayoutName(Config.layout, Config.keymapLayout),
+    Config.funbox,
+  );
   const lessonIndex = getActiveLesson();
   const lesson = lessonIndex === null ? undefined : LESSONS[lessonIndex];
   const recordLesson =

@@ -7,6 +7,7 @@ import {
   applySamples,
   fingerSummary,
   KeySample,
+  layoutStatsName,
   samplesFromEventLog,
   worstKeys,
 } from "../../src/ts/trainer/key-stats";
@@ -56,6 +57,22 @@ function log(events: TestEventNoMs[]): EventLog {
 }
 
 describe("key-stats", () => {
+  describe("layoutStatsName", () => {
+    it("passes a resolved name through", () => {
+      expect(layoutStatsName("canadian_french", [])).toBe("canadian_french");
+      expect(layoutStatsName("qwerty", ["58008"])).toBe("qwerty");
+    });
+
+    it("appends _mirrored when layout_mirror is active", () => {
+      expect(layoutStatsName("qwerty", ["layout_mirror"])).toBe(
+        "qwerty_mirrored",
+      );
+      expect(layoutStatsName("canadian_french", ["layout_mirror"])).toBe(
+        "canadian_french_mirrored",
+      );
+    });
+  });
+
   describe("samplesFromEventLog", () => {
     it("attributes samples to the expected key", () => {
       const samples = samplesFromEventLog(
