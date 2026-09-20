@@ -101,7 +101,7 @@ A lesson map shows legends, state and best per lesson, plus a continue button. S
 
 Plumbing mirrors every SolidJS page: PageName union, solidPage, route, index.html container, mount key, nav button. nginx already serves any path. Starting a lesson is startLesson then navigate, since the test page restarts on show. Bests need a new progress field; the 100-attempt cap evicts them. The reviewer cut the intro modal, the mobile row and the keytip.
 
-First slice, landed in `feat(trainer): add the trainer page with a lesson map and a shared begin action`: `/trainer` route, nav button, a "Trainer: open page" command, a lesson map with legends, state and a best derived from the stored attempts whose unlocked rows start the lesson, a continue button, and `beginLesson` in trainer/actions.ts shared with the commandline. The per-lesson best field landed with Progress v2 in `feat(trainer): foundations C, progress v2 with lesson ids and per-layout state`. Still to come: the picker modal, the attempts chart and the per-lesson table.
+First slice, landed in `feat(trainer): add the trainer page with a lesson map and a shared begin action`: `/trainer` route, nav button, a "Trainer: open page" command, a lesson map with legends, state and a best derived from the stored attempts whose unlocked rows start the lesson, a continue button, and `beginLesson` in trainer/actions.ts shared with the commandline. The per-lesson best field landed with Progress v2 in `feat(trainer): foundations C, progress v2 with lesson ids and per-layout state`. The attempts chart and the per-lesson table landed with build-order step 10. Still to come: the picker modal.
 
 Risk: commandline exec wipes a chained modal unless opensModal is set.
 
@@ -121,7 +121,7 @@ A chart of attempts against the configured wpm and accuracy lines, plus a per-le
 
 Attempts already hold everything for slice one; the ChartJs wrapper, time scale, annotation plugin and DataTable exist. Raise the attempt cap in the same change. Key deltas need a daily snapshot store written from recordSamples. The reviewer gated deltas behind 15% movement and 20 new samples.
 
-First slice: chart plus table on the trainer page.
+First slice landed in `feat(trainer): progress-dashboard, attempts chart and lesson table`: a ChartJs line of the current layout's attempts with wpm left, accuracy right and the configured floors as annotation lines, plus a DataTable with attempts, best, last wpm and acc and state per lesson, both hidden while the layout has no attempts.
 
 Risk: deltas mean little until sample-model-v2 removes the penalty.
 
@@ -210,7 +210,7 @@ Next, honest data and surfaces on it:
 7. foundations C: Progress v2 with lesson ids, layout field, per-layout current and unlocked, larger cap; backup v2. Done in `feat(trainer): foundations C, progress v2 with lesson ids and per-layout state`; covers foundation items 10 to 12 above.
 8. mastery-and-phases: the gate only, on top of the configured floor. Done in `feat(trainer): mastery-and-phases, gate unlocks on per-key mastery`; covers foundation item 9 above.
 9. feedback-loop: the result card with retry and next. Done in `feat(trainer): feedback-loop, result card with retry and next`.
-10. progress-dashboard: attempts chart and per-lesson table on the page.
+10. progress-dashboard: attempts chart and per-lesson table on the page. Done in `feat(trainer): progress-dashboard, attempts chart and lesson table`.
 11. adaptive-words: corpus and Zipf slice.
 12. targeted-practice: the drill only.
 13. export and import as files instead of a single-line commandline input.
