@@ -3,9 +3,15 @@ import { ChartData, ChartOptions } from "chart.js";
 import { createMemo, For, JSXElement, Show } from "solid-js";
 
 import { getConfig } from "../../../config/store";
+import { createEffectOn } from "../../../hooks/effects";
 import { inputLayoutObject, isTestActive } from "../../../states/test";
 import { getTheme } from "../../../states/theme";
-import { beginLesson } from "../../../trainer/actions";
+import {
+  beginLesson,
+  exportBackupFile,
+  importBackupFile,
+  importRequest,
+} from "../../../trainer/actions";
 import {
   Attempt,
   bestOf,
@@ -214,6 +220,18 @@ export function TrainerPage(): JSXElement {
     return best === undefined ? "" : `best ${Math.round(best)} wpm`;
   };
 
+  // oxlint-disable-next-line no-unassigned-vars -- assigned via SolidJS ref
+  let fileInput!: HTMLInputElement;
+  const pickFile = (): void => fileInput.click();
+  const onFileChosen = (): void => {
+    const file = fileInput.files?.[0];
+    if (file === undefined) return;
+    void importBackupFile(file).finally(() => {
+      fileInput.value = "";
+    });
+  };
+  createEffectOn(importRequest, pickFile, { defer: true });
+
   const attempts = createMemo(layoutAttempts);
   const rows = createMemo((): LessonRow[] =>
     LESSONS.map((lesson, index) => {
@@ -237,13 +255,35 @@ export function TrainerPage(): JSXElement {
       <div class="grid gap-8">
         <div class="flex flex-wrap items-center justify-between gap-4">
           <H2 text="trainer" fa={{ icon: "fa-graduation-cap" }} class="pb-0" />
-          <Button
-            fa={{ icon: "fa-play" }}
-            text={`continue lesson ${currentLesson() + 1}: ${currentName()}`}
-            disabled={isTestActive()}
-            class="px-8 py-4"
-            onClick={() => void beginLesson(currentLesson())}
-          />
+          <span class="flex flex-wrap items-center gap-2">
+            <Button
+              fa={{ icon: "fa-download" }}
+              text="export"
+              variant="text"
+              onClick={exportBackupFile}
+            />
+            <Button
+              fa={{ icon: "fa-upload" }}
+              text="import"
+              variant="text"
+              onClick={pickFile}
+            />
+            <input
+              ref={fileInput}
+              type="file"
+              accept=".json,application/json"
+              class="hidden"
+              data-testid="trainerImportFile"
+              onChange={onFileChosen}
+            />
+            <Button
+              fa={{ icon: "fa-play" }}
+              text={`continue lesson ${currentLesson() + 1}: ${currentName()}`}
+              disabled={isTestActive()}
+              class="px-8 py-4"
+              onClick={() => void beginLesson(currentLesson())}
+            />
+          </span>
         </div>
         <div class="grid gap-2">
           <For each={LESSONS}>

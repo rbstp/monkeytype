@@ -1,5 +1,5 @@
 import { LayoutObject } from "@monkeytype/schemas/layouts";
-import { render, screen } from "@solidjs/testing-library";
+import { fireEvent, render, screen } from "@solidjs/testing-library";
 import { readFileSync } from "fs";
 import { createSignal } from "solid-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,7 @@ import { TrainerPage } from "../../../../src/ts/components/pages/trainer/Trainer
 import { setConfigStore } from "../../../../src/ts/config/store";
 import * as Core from "../../../../src/ts/states/core";
 import * as TestState from "../../../../src/ts/states/test";
+import * as Actions from "../../../../src/ts/trainer/actions";
 import {
   Attempt,
   LESSONS,
@@ -22,8 +23,20 @@ vi.mock("../../../../src/ts/controllers/route-controller", () => ({
 vi.mock("../../../../src/ts/trainer/session", () => ({
   getActiveLesson: vi.fn(),
 }));
+const { importRequest, requestImport } = await vi.hoisted(async () => {
+  const { createSignal: signal } = await import("solid-js");
+  const [importRequest, setImportRequest] = signal(0);
+  return {
+    importRequest,
+    requestImport: (): void => void setImportRequest((count) => count + 1),
+  };
+});
 vi.mock("../../../../src/ts/trainer/actions", () => ({
   beginLesson: vi.fn(),
+  exportBackupFile: vi.fn(),
+  importBackupFile: vi.fn(),
+  importRequest,
+  requestImport,
 }));
 vi.mock("../../../../src/ts/components/common/ChartJs", () => ({
   ChartJs: (props: { name: string; data: unknown; options: unknown }) => (
@@ -149,6 +162,41 @@ describe("TrainerPage", () => {
     expect(rows[1]).toHaveTextContent("2. e i");
     expect(rows[1]).toHaveTextContent("current");
     expect(rows[2]).toHaveTextContent("locked");
+  });
+
+  it("exports through the shared action", () => {
+    render(() => <TrainerPage />);
+    fireEvent.click(screen.getByText("export"));
+    expect(Actions.exportBackupFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("hands a chosen file to the import action and clears the input", async () => {
+    vi.mocked(Actions.importBackupFile).mockResolvedValue(true);
+    render(() => <TrainerPage />);
+    const input = screen.getByTestId("trainerImportFile") as HTMLInputElement;
+    expect(input).toHaveAttribute("accept", ".json,application/json");
+    const file = new File(["{}"], "trainer-backup.json", {
+      type: "application/json",
+    });
+    Object.defineProperty(input, "files", {
+      value: [file],
+      configurable: true,
+    });
+    fireEvent.change(input);
+    expect(Actions.importBackupFile).toHaveBeenCalledWith(file);
+    await Promise.resolve();
+    expect(input.value).toBe("");
+  });
+
+  it("opens the file picker when an import is requested", () => {
+    render(() => <TrainerPage />);
+    const input = screen.getByTestId("trainerImportFile") as HTMLInputElement;
+    const click = vi.spyOn(input, "click").mockImplementation(() => undefined);
+    expect(click).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("import"));
+    expect(click).toHaveBeenCalledTimes(1);
+    requestImport();
+    expect(click).toHaveBeenCalledTimes(2);
   });
 
   it("hides the chart for a layout without attempts", () => {
