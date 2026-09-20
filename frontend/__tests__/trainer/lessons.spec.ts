@@ -404,23 +404,33 @@ describe("lessons", () => {
       });
     });
 
-    it("reports each weak key with its pooled counts", () => {
+    it("reports each weak key with its pooled counts, worst first", () => {
       expect(
         status([
           attempt({
             perKey: {
-              KeyE: { total: 8, errors: 1 },
-              KeyI: { total: 50, errors: 2 },
+              KeyE: { total: 50, errors: 2 },
+              KeyI: { total: 8, errors: 1 },
             },
           }),
         ]),
       ).toMatchObject({
         ok: false,
         weakKeys: [
-          { keycode: "KeyE", samples: 8, errors: 1, required: 20 },
-          { keycode: "KeyI", samples: 50, errors: 2, required: 20 },
+          { keycode: "KeyI", samples: 8, errors: 1, required: 20 },
+          { keycode: "KeyE", samples: 50, errors: 2, required: 20 },
         ],
       });
+      expect(
+        status([
+          attempt({
+            perKey: {
+              KeyE: { total: 50, errors: 2 },
+              KeyI: { total: 50, errors: 5 },
+            },
+          }),
+        ]).weakKeys.map((key) => key.keycode),
+      ).toEqual(["KeyI", "KeyE"]);
     });
 
     it("asks for the whole bar without attempts", () => {

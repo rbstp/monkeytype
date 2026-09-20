@@ -487,6 +487,10 @@ export type UnlockStatus = {
   weakKeys: WeakKey[];
 };
 
+function errorShare(key: KeyMastery): number {
+  return key.samples === 0 ? 0 : key.errors / key.samples;
+}
+
 export function isWeak(key: KeyMastery): boolean {
   return (
     key.samples < key.required || key.errors > key.samples * masteryErrorRate
@@ -527,7 +531,8 @@ export function unlockStatus(
     ][]
   )
     .filter(([, key]) => isWeak(key))
-    .map(([keycode, key]) => ({ keycode, ...key }));
+    .map(([keycode, key]) => ({ keycode, ...key }))
+    .sort((a, b) => a.samples - b.samples || errorShare(b) - errorShare(a));
   return { ok: floors && weakKeys.length === 0, wpmShort, accShort, weakKeys };
 }
 

@@ -14,9 +14,9 @@ Strengths:
 
 Gaps:
 
-- The chip at LessonNotice.tsx now names the active lesson, its best and the target on the test screen. Feedback beyond it is still one toast at index.ts:51.
+- The chip at LessonNotice.tsx names the active lesson, its best and the target on the test screen; the result card at LessonResultCard.tsx prints the shortfall or the unlock with retry and next. The unlock toast in trainer/index.ts stays.
 - Key stats v2 keeps speed apart from errors: emaMs takes only correct, non-recovery samples with pauses capped at three times the average, errRate is its own moving average, and deletes advance the clock. Shift is still folded into the base key in key-stats.ts. Panel and tips label keys slow or error-prone.
-- Unlocks read the configured floor through criteriaFor and, since the mastery gate, `masteryOf` in lessons.ts pools perKey over the last three attempts: a new key needs 20 samples and at most 3% errors before `unlockStatus` says ok. The shortfall has no surface yet beyond the missing toast.
+- Unlocks read the configured floor through criteriaFor and, since the mastery gate, `masteryOf` in lessons.ts pools perKey over the last three attempts: a new key needs 20 samples and at most 3% errors before `unlockStatus` says ok. The result card prints the first shortfall.
 - Early lessons are gibberish: english.json has 3 home-row words, so with minReal 30 at lessons.ts:118 lessons 1-4 are mostly "afa sas dad" from lessons.ts:142-171. The pool is built once at session.ts:126-150.
 - Layout is assumed qwerty in the lesson names hardcoded at lessons.ts:63-73. "default" resolves through keymapLayout in utils/layout-name.ts, and progress is per layout since Progress v2: `progressLayout()` in lessons.ts names the entry that `currentLesson()`, `unlockedUpTo()` and `bestOf()` read.
 - Config leaks: lifecycle.ts:110-111 fires the finished event before the store is set, preset-controller.ts:46 saves lesson values to the account, session.ts:209-213 lets punctuation alter scored text.
@@ -61,7 +61,7 @@ A chip reads "lesson 3: r u · best 28 · target 30 / 97%". The result screen sa
 
 The chip is a Notice over the reactive getActiveLesson and progress signals; "trainer" joins the closed CommandlineListKey union. The card mounts beside the weak-keys panel and must read reactive progress, since recordAttempt is async. Celebration, daily goal and streak are out by decision 6.
 
-First slice landed: the chip alone, a Notice over getActiveLesson and progress that opens /trainer, no new state. What remains is the result card with retry and next, build-order step 9.
+First slice landed: the chip alone, a Notice over getActiveLesson and progress that opens /trainer, no new state. The result card landed in `feat(trainer): feedback-loop, result card with retry and next`: one line from unlockStatus over the reactive progress signal, retry through restartTestEvent, next through beginLesson, disabled while locked, and "attempt not recorded" when the last attempt predates the result.
 
 Risk: a second full-width panel crowds the result page.
 
@@ -83,7 +83,7 @@ perKey is recorded per attempt and never read. Pool the last three attempts, req
 
 First slice landed in `feat(trainer): mastery-and-phases, gate unlocks on per-key mastery`: masteryOf and unlockStatus wired into canUnlock, syncUnlocked and recordAttempt, plain counts, capitals pool shifted samples only. The shortfall notice arrives with the result card in build-order step 9.
 
-Risk: the shortfall copy needs a surface; the indicator never renders today.
+Risk, resolved: the shortfall copy lives on the result card since build-order step 9.
 
 ### Targeted practice
 
@@ -209,7 +209,7 @@ Next, honest data and surfaces on it:
 
 7. foundations C: Progress v2 with lesson ids, layout field, per-layout current and unlocked, larger cap; backup v2. Done in `feat(trainer): foundations C, progress v2 with lesson ids and per-layout state`; covers foundation items 10 to 12 above.
 8. mastery-and-phases: the gate only, on top of the configured floor. Done in `feat(trainer): mastery-and-phases, gate unlocks on per-key mastery`; covers foundation item 9 above.
-9. feedback-loop: the result card with retry and next.
+9. feedback-loop: the result card with retry and next. Done in `feat(trainer): feedback-loop, result card with retry and next`.
 10. progress-dashboard: attempts chart and per-lesson table on the page.
 11. adaptive-words: corpus and Zipf slice.
 12. targeted-practice: the drill only.
