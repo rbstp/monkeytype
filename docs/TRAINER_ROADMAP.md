@@ -91,9 +91,9 @@ A drill button runs 30 seconds on your three slowest keys with before and after.
 
 startLesson is thin glue, so a general startSession is mechanical. The reviewer cut SM-2 and the every-third-continue hijack, and found two blockers: section limits under 10 are invalid, and tests under 75% accuracy discard samples. Pass a finer samplesUsable flag from test-logic.
 
-First slice: startSession extraction, a drill builder with spec, one command, the flag.
+First slice landed in `feat(trainer): targeted-practice, weak-key drill on a shared session`: `startSession` in session.ts with startLesson as glue, `buildDrillWords` and `startDrill` in drill.ts, the "Trainer: drill weak keys" command through `beginDrill` in actions.ts, a 30 second time limit, an `activeDrill` signal that keeps lesson attempts, the chip and the card away, one notice with before and after emaMs per key, and `samplesUsable` on FinishedTest so an accuracy-only invalidation still records key samples. Warm-up and review are still open.
 
-Risk: drill code importing test-logic cycles through trainer/index.
+Risk, resolved: drill.ts imports session.ts and key-stats only; madge stays clean.
 
 ### Trainer page
 
@@ -212,7 +212,7 @@ Next, honest data and surfaces on it:
 9. feedback-loop: the result card with retry and next. Done in `feat(trainer): feedback-loop, result card with retry and next`.
 10. progress-dashboard: attempts chart and per-lesson table on the page. Done in `feat(trainer): progress-dashboard, attempts chart and lesson table`.
 11. adaptive-words: corpus and Zipf slice. Done in `feat(trainer): adaptive-words, biggest corpus and damped rank sampling`.
-12. targeted-practice: the drill only.
+12. targeted-practice: the drill only. Done in `feat(trainer): targeted-practice, weak-key drill on a shared session`.
 13. export and import as files instead of a single-line commandline input.
 
 Later, the French goal and the rest:

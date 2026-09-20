@@ -5,7 +5,7 @@ import {
 } from "../../states/notifications";
 import { isTestActive } from "../../states/test";
 import * as TestLogic from "../../test/test-logic";
-import { beginLesson } from "../../trainer/actions";
+import { beginDrill, beginLesson } from "../../trainer/actions";
 import { exportBackup, importBackup } from "../../trainer/backup";
 import { resetKeyStats } from "../../trainer/key-stats";
 import {
@@ -14,7 +14,11 @@ import {
   resetProgress,
   unlockedUpTo,
 } from "../../trainer/lessons";
-import { getActiveLesson, stopLesson } from "../../trainer/session";
+import {
+  getActiveLesson,
+  isSessionActive,
+  stopLesson,
+} from "../../trainer/session";
 import { Command, CommandsSubgroup } from "../types";
 
 const icon = "fa-graduation-cap";
@@ -75,10 +79,18 @@ const commands: Command[] = [
     subgroup: lessonList,
   },
   {
+    id: "trainerDrill",
+    display: "Trainer: drill weak keys",
+    alias: "practice slow error-prone",
+    icon,
+    available: notDuringTest,
+    exec: (): void => void beginDrill(),
+  },
+  {
     id: "trainerStop",
     display: "Trainer: stop",
     icon,
-    available: (): boolean => notDuringTest() && getActiveLesson() !== null,
+    available: (): boolean => notDuringTest() && isSessionActive(),
     exec: (): void => {
       stopLesson();
       void TestLogic.restart();

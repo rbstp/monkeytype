@@ -17,7 +17,13 @@ import * as CustomText from "../../src/ts/test/custom-text";
 import { EventLog } from "../../src/ts/test/events/types";
 import * as PractiseWords from "../../src/ts/test/practise-words";
 import { onTestFinished } from "../../src/ts/trainer";
-import { getKeyStats, resetKeyStats } from "../../src/ts/trainer/key-stats";
+import {
+  getKeyStats,
+  KeySample,
+  recordSamples,
+  resetKeyStats,
+} from "../../src/ts/trainer/key-stats";
+import * as Lessons from "../../src/ts/trainer/lessons";
 import {
   Attempt,
   currentLesson,
@@ -32,11 +38,15 @@ import {
   unlockedUpTo,
 } from "../../src/ts/trainer/lessons";
 import {
+  getActiveDrill,
   getActiveLesson,
+  isSessionActive,
   largestCorpus,
   startLesson,
+  startSession,
   stopLesson,
 } from "../../src/ts/trainer/session";
+import { startDrill } from "../../src/ts/trainer/drill";
 import * as JsonData from "../../src/ts/utils/json-data";
 
 vi.mock("../../src/ts/test/events/stats", () => ({
@@ -54,7 +64,13 @@ const qwerty = JSON.parse(
 
 const { replaceConfig } = __testing;
 
-function finished(targetWords: string[]): void {
+type FinishedFlags = {
+  invalid?: boolean;
+  samplesUsable?: boolean;
+  countsForLesson?: boolean;
+};
+
+function finished(targetWords: string[], flags: FinishedFlags = {}): void {
   const eventLog: EventLog = {
     version: 1,
     events: [
@@ -83,7 +99,9 @@ function finished(targetWords: string[]): void {
     eventLog,
     completedEvent: { wpm: 40, acc: 100, bailedOut: false } as CompletedEvent,
     invalid: false,
+    samplesUsable: true,
     countsForLesson: true,
+    ...flags,
   });
 }
 
@@ -166,18 +184,28 @@ describe("trainer session", () => {
       expect(getLanguageMock).not.toHaveBeenCalledWith("english");
     });
 
-    it("draws by rank when the corpus is ordered by frequency", async () => {
+    it("passes the frequency order of the corpus to the word builder", async () => {
+      const buildSpy = vi.spyOn(Lessons, "buildLessonWords");
       getLanguageMock.mockResolvedValueOnce({
         name: "english_10k",
         orderedByFrequency: true,
         words: ["as", "all", "sad", "fall", "lass", "flask"],
       } as never);
       expect(await startLesson(0)).toBe(true);
-      const text = CustomText.getText();
-      expect(text).toHaveLength(120);
-      expect(text.filter((word) => word === "as").length).toBeGreaterThan(
-        text.filter((word) => word === "flask").length,
+      expect(buildSpy).toHaveBeenLastCalledWith(
+        expect.any(Array),
+        expect.anything(),
+        { orderedByFrequency: true },
       );
+      expect(CustomText.getText()).toHaveLength(120);
+
+      await startLesson(0);
+      expect(buildSpy).toHaveBeenLastCalledWith(
+        expect.any(Array),
+        expect.anything(),
+        { orderedByFrequency: false },
+      );
+      buildSpy.mockRestore();
     });
   });
 
@@ -450,6 +478,174 @@ describe("trainer session", () => {
         trainerUnlock: "relaxed",
       });
       expect(unlockedUpTo()).toBe(1);
+    });
+  });
+
+  describe("sessions", () => {
+    it("starts a timed session without a lesson", async () => {
+      expect(
+        await startSession({
+          words: ["as", "sad"],
+          indicator: "drill: a s",
+          limit: { mode: "time", value: 30 },
+        }),
+      ).toBe(true);
+      expect(getActiveLesson()).toBeNull();
+      expect(isSessionActive()).toBe(false);
+      expect(Config.mode).toBe("custom");
+      expect(CustomText.getText()).toEqual(["as", "sad"]);
+      expect(CustomText.getLimitMode()).toBe("time");
+      expect(CustomText.getLimitValue()).toBe(30);
+      expect(Core.getCustomTextIndicator()?.name).toBe("drill: a s");
+
+      stopLesson();
+      expect(Config.mode).toBe("time");
+      expect(CustomText.getText()).toEqual(["before"]);
+    });
+
+    it("refuses an empty pool", async () => {
+      expect(
+        await startSession({
+          words: [],
+          indicator: "x",
+          limit: { mode: "word", value: 10 },
+        }),
+      ).toBe(false);
+      expect(Config.mode).toBe("time");
+    });
+
+    it("replaces a lesson with a drill and back", async () => {
+      await startLesson(0);
+      expect(
+        await startSession({
+          words: ["as"],
+          indicator: "drill",
+          limit: { mode: "time", value: 30 },
+          drill: { keys: ["KeyA"], before: { KeyA: 300 } },
+        }),
+      ).toBe(true);
+      expect(getActiveLesson()).toBeNull();
+      expect(getActiveDrill()).toEqual({
+        keys: ["KeyA"],
+        before: { KeyA: 300 },
+      });
+      expect(isSessionActive()).toBe(true);
+
+      await startLesson(1);
+      expect(getActiveDrill()).toBeNull();
+      expect(getActiveLesson()).toBe(1);
+
+      stopLesson();
+      expect(Config.mode).toBe("time");
+      expect(Config.punctuation).toBe(true);
+    });
+
+    it("stops a drill when a watched key changes", async () => {
+      replaceConfig({ mode: "time", punctuation: false });
+      await startSession({
+        words: ["as"],
+        indicator: "drill",
+        limit: { mode: "time", value: 30 },
+        drill: { keys: ["KeyA"], before: {} },
+      });
+      expect(setConfig("punctuation", true)).toBe(true);
+      expect(getActiveDrill()).toBeNull();
+      expect(Config.mode).toBe("time");
+      expect(Config.punctuation).toBe(true);
+    });
+
+    it("ignores words per test during a drill", async () => {
+      await startSession({
+        words: ["as"],
+        indicator: "drill",
+        limit: { mode: "time", value: 30 },
+        drill: { keys: ["KeyA"], before: {} },
+      });
+      expect(setConfig("trainerWordsPerTest", 20)).toBe(true);
+      expect(CustomText.getLimitMode()).toBe("time");
+      expect(CustomText.getLimitValue()).toBe(30);
+      expect(getActiveDrill()).not.toBeNull();
+    });
+  });
+
+  describe("drill", () => {
+    const samples = (
+      keycode: "KeyK" | "KeyD" | "KeyF" | "KeyA",
+      ms: number,
+    ): KeySample[] =>
+      Array.from({ length: 6 }, () => ({
+        keycode,
+        shifted: false,
+        correct: keycode !== "KeyK",
+        spacingMs: ms,
+      }));
+
+    it("needs key stats first", async () => {
+      expect(await startDrill()).toBe(false);
+      expect(noticeMock).toHaveBeenCalledWith(
+        "No key stats for this layout yet.",
+      );
+      expect(Config.mode).toBe("time");
+    });
+
+    it("drills the three worst keys for 30 seconds and records samples but no attempt", async () => {
+      recordSamples("qwerty", [
+        ...samples("KeyK", 900),
+        ...samples("KeyD", 700),
+        ...samples("KeyF", 650),
+        ...samples("KeyA", 200),
+      ]);
+      const before = getKeyStats().layouts["qwerty"]?.["KeyD"]?.total;
+
+      expect(await startDrill()).toBe(true);
+      expect(getActiveLesson()).toBeNull();
+      expect(getActiveDrill()?.keys).toEqual(["KeyK", "KeyD", "KeyF"]);
+      expect(getActiveDrill()?.before).toMatchObject({ KeyD: 700 });
+      expect(CustomText.getLimitMode()).toBe("time");
+      expect(CustomText.getLimitValue()).toBe(30);
+      expect(Core.getCustomTextIndicator()?.name).toBe("drill: k d f");
+      expect(CustomText.getText().length).toBeGreaterThan(30);
+      expect(
+        CustomText.getText().filter((word) => /[kdf]/.test(word)).length,
+      ).toBeGreaterThan(CustomText.getText().length / 2);
+
+      finished(["dad "]);
+      await flush();
+
+      expect(progress().attempts).toHaveLength(0);
+      expect(getKeyStats().layouts["qwerty"]?.["KeyD"]?.total).toBe(
+        (before ?? 0) + 1,
+      );
+      expect(noticeMock).toHaveBeenCalledWith(
+        "k: no time to no time, d: 700 ms to 700 ms, f: 650 ms to 650 ms",
+        { durationMs: 8000 },
+      );
+    });
+  });
+
+  describe("samplesUsable", () => {
+    it("records samples but no attempt when only the accuracy gate failed", async () => {
+      await startLesson(0);
+      finished(["as ", "sad "], {
+        invalid: true,
+        samplesUsable: true,
+        countsForLesson: false,
+      });
+      await flush();
+      expect(getKeyStats().layouts["qwerty"]?.["KeyA"]?.total).toBe(1);
+      expect(progress().attempts).toHaveLength(0);
+    });
+
+    it("records nothing when the test is invalid for another reason", async () => {
+      await startLesson(0);
+      finished(["as ", "sad "], {
+        invalid: true,
+        samplesUsable: false,
+        countsForLesson: false,
+      });
+      await flush();
+      expect(getKeyStats().layouts["qwerty"]).toBeUndefined();
+      expect(progress().attempts).toHaveLength(0);
     });
   });
 

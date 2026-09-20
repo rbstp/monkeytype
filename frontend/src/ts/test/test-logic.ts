@@ -891,6 +891,7 @@ export async function finish(difficultyFailed = false): Promise<void> {
   const mode2Number = parseInt(completedEvent.mode2);
 
   let tooShort = false;
+  let accuracyOnly = false;
   //fail checks
   const dateDur = getDateBasedTestDurationMs(eventLog) / 1000;
   if (
@@ -971,6 +972,7 @@ export async function finish(difficultyFailed = false): Promise<void> {
   ) {
     showNoticeNotification("Test invalid - accuracy");
     setIsTestInvalid(true);
+    accuracyOnly = true;
     dontSave = true;
   }
 
@@ -980,6 +982,7 @@ export async function finish(difficultyFailed = false): Promise<void> {
     eventLog,
     completedEvent,
     invalid: isTestInvalid(),
+    samplesUsable: !isTestInvalid() || accuracyOnly,
     countsForLesson: !dontSave,
   });
 
