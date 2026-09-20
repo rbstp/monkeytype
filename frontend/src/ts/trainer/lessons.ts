@@ -1,6 +1,9 @@
 import { z } from "zod";
+import { TrainerUnlock } from "@monkeytype/schemas/configs";
 import { LayoutObject } from "@monkeytype/schemas/layouts";
+import { Config } from "../config/store";
 import { Keycode } from "../constants/keys";
+import { configEvent } from "../events/config";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { keycodeToLayoutKey } from "../utils/key-converter";
 import { KeySample } from "./key-stats";
@@ -286,6 +289,16 @@ export const defaultCriteria: UnlockCriteria = {
   window: 1,
 };
 
+const criteriaByUnlock: Record<TrainerUnlock, UnlockCriteria> = {
+  relaxed: { minAcc: 95, minWpm: 25, window: 1 },
+  normal: defaultCriteria,
+  strict: { minAcc: 98, minWpm: 35, window: 2 },
+};
+
+export function criteriaFor(unlock: TrainerUnlock): UnlockCriteria {
+  return criteriaByUnlock[unlock];
+}
+
 export function countPerKey(
   samples: KeySample[],
   lesson: Lesson,
@@ -348,11 +361,12 @@ export { progress };
  * test.
  */
 function syncUnlocked(): void {
+  const criteria = criteriaFor(Config.trainerUnlock);
   setProgress((current) => {
     let unlocked = current.unlocked;
     while (
       unlocked + 1 < LESSONS.length &&
-      canUnlock(current.attempts, unlocked)
+      canUnlock(current.attempts, unlocked, criteria)
     ) {
       unlocked++;
     }
@@ -360,7 +374,11 @@ function syncUnlocked(): void {
   });
 }
 
-syncUnlocked();
+configEvent.subscribe(({ key }) => {
+  if (key === "fullConfigChangeFinished" || key === "trainerUnlock") {
+    syncUnlocked();
+  }
+});
 
 export function setCurrentLesson(index: number): void {
   setProgress((current) => ({ ...current, current: index }));
@@ -379,7 +397,7 @@ export function recordAttempt(attempt: Attempt): boolean {
     unlockedNow =
       next < LESSONS.length &&
       current.unlocked < next &&
-      canUnlock(attempts, attempt.lesson);
+      canUnlock(attempts, attempt.lesson, criteriaFor(Config.trainerUnlock));
     return {
       ...current,
       attempts,

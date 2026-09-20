@@ -10,8 +10,13 @@ import {
 } from "../config/persistence";
 import { setConfig } from "../config/setters";
 import { configEvent } from "../events/config";
+import { restartTestEvent } from "../events/test";
 import { useLocalStorage } from "../hooks/useLocalStorage";
-import { getCustomTextIndicator, setCustomTextIndicator } from "../states/core";
+import {
+  getActivePage,
+  getCustomTextIndicator,
+  setCustomTextIndicator,
+} from "../states/core";
 import { showNoticeNotification } from "../states/notifications";
 import { __nonReactive, isTestActive } from "../states/test";
 import * as CustomText from "../test/custom-text";
@@ -41,8 +46,6 @@ type Snapshot = z.infer<typeof SnapshotSchema>;
 const snapshotKeys = ["punctuation", "numbers", "funbox", "lazyMode"] as const;
 const textKeys = ["layout", "language"] as const;
 const watchedKeys: readonly string[] = [...snapshotKeys, ...textKeys];
-
-const wordsPerTest = 40;
 
 const [snapshot, setSnapshot] = useLocalStorage<Snapshot | null>({
   key: "trainerSnapshot",
@@ -164,7 +167,7 @@ export async function startLesson(index: number): Promise<boolean> {
   applyCustomText({
     text: words,
     mode: "random",
-    limit: { mode: "word", value: wordsPerTest },
+    limit: { mode: "word", value: Config.trainerWordsPerTest },
     pipeDelimiter: false,
   });
   setCustomTextIndicator({
@@ -188,6 +191,7 @@ function resumeLesson(index: number): void {
     stopLesson();
     return;
   }
+  CustomText.setLimitValue(Config.trainerWordsPerTest);
   setCustomTextIndicator({
     name: `lesson ${index + 1}: ${lesson.name}`,
     isLong: false,
@@ -249,6 +253,9 @@ configEvent.subscribe(({ key, newValue, previousValue }) => {
   if (activeLesson() === null) return;
   if (key === "mode") {
     stopLesson({ restoreMode: false });
+  } else if (key === "trainerWordsPerTest") {
+    CustomText.setLimitValue(newValue);
+    if (getActivePage() === "test") restartTestEvent.dispatch();
   } else if (
     watchedKeys.includes(key) &&
     !isUnchanged(newValue, previousValue)

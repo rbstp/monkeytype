@@ -20,7 +20,10 @@ const key = (
   keycode: "KeyL",
   finger: "RR",
   legend: "l",
-  ema: 1800,
+  label: "slow",
+  emaMs: 1800,
+  timed: 23,
+  errRate: 0.05,
   total: 30,
   errors: 7,
   lastSeen: 0,
@@ -83,8 +86,14 @@ describe("tips", () => {
       fingers: fingers({ RR: { total: 40, errors: 8, avgMs: 900 } }),
       weakKeys: [
         key({}),
-        key({ keycode: "KeyK", finger: "RM", legend: "k", ema: 1400 }),
-        key({ keycode: "KeyA", finger: "LP", legend: "a", ema: 120 }),
+        key({ keycode: "KeyK", finger: "RM", legend: "k", emaMs: 1400 }),
+        key({
+          keycode: "KeyA",
+          finger: "LP",
+          legend: "a",
+          emaMs: 120,
+          label: undefined,
+        }),
       ],
     });
     expect(tips[1]).toBe(
@@ -92,10 +101,23 @@ describe("tips", () => {
     );
   });
 
+  it("names error-prone keys before slow ones", () => {
+    const tips = buildTips({
+      fingers: fingers(),
+      weakKeys: [
+        key({ legend: "q", label: "error-prone", errRate: 0.25, errors: 3 }),
+        key({ keycode: "KeyK", finger: "RM", legend: "k", emaMs: 1400 }),
+      ],
+    });
+    expect(tips).toEqual([
+      "Error-prone keys: q 10% missed, Slowest keys: k 1.4s. Say each letter as you press it for a few tests.",
+    ]);
+  });
+
   it("keeps quiet when there is nothing to say", () => {
     const tips = buildTips({
       fingers: fingers({ LP: { total: 5, errors: 5, avgMs: 900 } }),
-      weakKeys: [key({ ema: 200 })],
+      weakKeys: [key({ emaMs: 200, label: undefined })],
     });
     expect(tips).toEqual([]);
   });

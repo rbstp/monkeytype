@@ -48,6 +48,7 @@ export const commands: CommandsSubgroup = {
 
     //trainer
     ...TrainerCommands,
+    ...buildCommands("trainerUnlock", "trainerWordsPerTest"),
 
     //test screen
     ...buildCommands(

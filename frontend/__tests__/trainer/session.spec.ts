@@ -3,12 +3,14 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompletedEvent } from "@monkeytype/schemas/results";
 import { LayoutObject } from "@monkeytype/schemas/layouts";
 import * as ApeConfig from "../../src/ts/ape/config";
+import * as Core from "../../src/ts/states/core";
 import * as Lifecycle from "../../src/ts/config/lifecycle";
 import { saveFullConfigToLocalStorage } from "../../src/ts/config/persistence";
 import { setConfig } from "../../src/ts/config/setters";
 import { Config, getConfig } from "../../src/ts/config/store";
 import { __testing } from "../../src/ts/config/testing";
 import { getDefaultConfig } from "../../src/ts/constants/default-config";
+import { restartTestEvent } from "../../src/ts/events/test";
 import * as Notifications from "../../src/ts/states/notifications";
 import * as TestState from "../../src/ts/states/test";
 import * as CustomText from "../../src/ts/test/custom-text";
@@ -17,9 +19,12 @@ import * as PractiseWords from "../../src/ts/test/practise-words";
 import { onTestFinished } from "../../src/ts/trainer";
 import { getKeyStats, resetKeyStats } from "../../src/ts/trainer/key-stats";
 import {
+  Attempt,
   isLessonText,
   lessonChars,
   progress,
+  recordAttempt,
+  replaceProgress,
   resetProgress,
 } from "../../src/ts/trainer/lessons";
 import {
@@ -275,6 +280,111 @@ describe("trainer session", () => {
     expect(stored.mode).toBe("time");
     expect(stored.punctuation).toBe(true);
     expect(stored.smoothCaret).toBe("off");
+  });
+
+  describe("settings", () => {
+    const attempt = (wpm: number, acc: number): Attempt => ({
+      lesson: 0,
+      wpm,
+      acc,
+      perKey: {},
+      ts: 0,
+    });
+
+    it("sizes the lesson from trainerWordsPerTest", async () => {
+      replaceConfig({ mode: "time", trainerWordsPerTest: 12 });
+      expect(await startLesson(0)).toBe(true);
+      expect(CustomText.getLimitValue()).toBe(12);
+      expect(CustomText.getText().length).toBeGreaterThan(12);
+    });
+
+    it("resizes and restarts when words per test changes mid-lesson", async () => {
+      const pageMock = vi.spyOn(Core, "getActivePage").mockReturnValue("test");
+      CustomText.setLimitValue(7);
+      await startLesson(0);
+      const restarts = vi.fn();
+      const unsubscribe = restartTestEvent.subscribe(restarts);
+      expect(setConfig("trainerWordsPerTest", 20)).toBe(true);
+      unsubscribe();
+      pageMock.mockRestore();
+      expect(getActiveLesson()).toBe(0);
+      expect(CustomText.getLimitValue()).toBe(20);
+      expect(restarts).toHaveBeenCalledTimes(1);
+
+      stopLesson();
+      expect(CustomText.getLimitValue()).toBe(7);
+    });
+
+    it("resizes without a restart away from the test page", async () => {
+      const pageMock = vi
+        .spyOn(Core, "getActivePage")
+        .mockReturnValue("settings");
+      await startLesson(0);
+      const restarts = vi.fn();
+      const unsubscribe = restartTestEvent.subscribe(restarts);
+      expect(setConfig("trainerWordsPerTest", 20)).toBe(true);
+      unsubscribe();
+      pageMock.mockRestore();
+      expect(CustomText.getLimitValue()).toBe(20);
+      expect(restarts).not.toHaveBeenCalled();
+    });
+
+    it("re-applies the limit when a full config change resumes the lesson", async () => {
+      await startLesson(0);
+      await Lifecycle.applyConfig({
+        ...getDefaultConfig(),
+        mode: "custom",
+        trainerWordsPerTest: 25,
+      });
+      expect(getActiveLesson()).toBe(0);
+      expect(CustomText.getLimitValue()).toBe(25);
+    });
+
+    it("ignores words per test without a lesson", () => {
+      CustomText.setLimitValue(7);
+      const restarts = vi.fn();
+      const unsubscribe = restartTestEvent.subscribe(restarts);
+      expect(setConfig("trainerWordsPerTest", 20)).toBe(true);
+      unsubscribe();
+      expect(CustomText.getLimitValue()).toBe(7);
+      expect(restarts).not.toHaveBeenCalled();
+    });
+
+    it("judges an attempt against the configured bar", () => {
+      replaceConfig({ trainerUnlock: "strict" });
+      expect(recordAttempt(attempt(36, 99))).toBe(false);
+      expect(progress().unlocked).toBe(0);
+      expect(recordAttempt(attempt(36, 99))).toBe(true);
+      expect(progress().unlocked).toBe(1);
+    });
+
+    it("re-evaluates stored attempts when the bar changes", () => {
+      replaceProgress({
+        version: 1,
+        current: 0,
+        unlocked: 0,
+        attempts: [attempt(26, 96)],
+      });
+      expect(progress().unlocked).toBe(0);
+      expect(setConfig("trainerUnlock", "relaxed")).toBe(true);
+      expect(progress().unlocked).toBe(1);
+      expect(setConfig("trainerUnlock", "strict")).toBe(true);
+      expect(progress().unlocked).toBe(1);
+    });
+
+    it("re-evaluates stored attempts once the config loads", async () => {
+      replaceProgress({
+        version: 1,
+        current: 0,
+        unlocked: 0,
+        attempts: [attempt(26, 96)],
+      });
+      await Lifecycle.applyConfig({
+        ...getDefaultConfig(),
+        trainerUnlock: "relaxed",
+      });
+      expect(progress().unlocked).toBe(1);
+    });
   });
 
   it("leaves a test alone when no lesson is active", async () => {

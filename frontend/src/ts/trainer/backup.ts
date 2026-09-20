@@ -1,10 +1,19 @@
 import { z } from "zod";
-import { getKeyStats, KeyStatsSchema, replaceKeyStats } from "./key-stats";
+import {
+  getKeyStats,
+  KeyStatsSchema,
+  KeyStatsV1Schema,
+  replaceKeyStats,
+  upgradeKeyStats,
+} from "./key-stats";
 import { progress, ProgressSchema, replaceProgress } from "./lessons";
 
 export const BackupSchema = z.object({
   version: z.literal(1),
-  keyStats: KeyStatsSchema,
+  keyStats: z.union([
+    KeyStatsSchema,
+    KeyStatsV1Schema.transform(upgradeKeyStats),
+  ]),
   progress: ProgressSchema,
 });
 export type Backup = z.infer<typeof BackupSchema>;

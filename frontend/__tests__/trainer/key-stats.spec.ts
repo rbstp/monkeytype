@@ -1,5 +1,5 @@
 import { readFileSync } from "fs";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { LayoutObject } from "@monkeytype/schemas/layouts";
 import { EventLog, TestEventNoMs } from "../../src/ts/test/events/types";
 import {
@@ -7,8 +7,10 @@ import {
   applySamples,
   fingerSummary,
   KeySample,
+  keyLabel,
   layoutStatsName,
   samplesFromEventLog,
+  upgradeKeyStats,
   worstKeys,
 } from "../../src/ts/trainer/key-stats";
 
@@ -113,12 +115,22 @@ describe("key-stats", () => {
       ]);
     });
 
-    it("ignores deletes and events without a target", () => {
+    it("ignores events without a target", () => {
+      const samples = samplesFromEventLog(
+        log([input(100, 5, 0, "a", true)]),
+        qwerty,
+      );
+      expect(samples).toEqual([]);
+    });
+
+    it("advances the clock on deletes and flags the next insert as recovery", () => {
       const samples = samplesFromEventLog(
         log([
+          input(0, 0, 0, "a", true),
+          input(100, 0, 1, "x", false),
           {
             type: "input",
-            testMs: 0,
+            testMs: 900,
             data: {
               inputType: "deleteContentBackward",
               wordIndex: 0,
@@ -126,16 +138,84 @@ describe("key-stats", () => {
               inputValue: "",
             },
           },
-          input(100, 5, 0, "a", true),
+          input(1000, 0, 1, "s", true),
+          input(1100, 0, 2, " ", true, { commitsWord: true }),
         ]),
         qwerty,
       );
-      expect(samples).toEqual([]);
+
+      expect(samples).toEqual<KeySample[]>([
+        { keycode: "KeyA", shifted: false, correct: true },
+        { keycode: "KeyS", shifted: false, correct: false, spacingMs: 100 },
+        {
+          keycode: "KeyS",
+          shifted: false,
+          correct: true,
+          spacingMs: 100,
+          recovery: true,
+        },
+        { keycode: "Space", shifted: false, correct: true, spacingMs: 100 },
+      ]);
+    });
+
+    it("treats an automatic delete on error like a backspace", () => {
+      const samples = samplesFromEventLog(
+        log([
+          input(0, 0, 0, "a", true),
+          input(100, 0, 1, "x", false),
+          {
+            type: "input",
+            testMs: 100,
+            data: {
+              inputType: "deleteContentBackward",
+              wordIndex: 0,
+              charIndex: 1,
+              inputValue: "",
+              automatic: true,
+            },
+          },
+          input(400, 0, 1, "s", true),
+        ]),
+        qwerty,
+      );
+      expect(samples[2]).toEqual({
+        keycode: "KeyS",
+        shifted: false,
+        correct: true,
+        spacingMs: 300,
+        recovery: true,
+      });
+    });
+
+    it("keeps recovering across held backspaces and a leading delete", () => {
+      const del = (testMs: number): TestEventNoMs => ({
+        type: "input",
+        testMs,
+        data: {
+          inputType: "deleteContentBackward",
+          wordIndex: 0,
+          charIndex: 0,
+          inputValue: "",
+        },
+      });
+      const samples = samplesFromEventLog(
+        log([del(0), del(50), del(100), input(300, 0, 0, "a", true)]),
+        qwerty,
+      );
+      expect(samples).toEqual<KeySample[]>([
+        {
+          keycode: "KeyA",
+          shifted: false,
+          correct: true,
+          spacingMs: 200,
+          recovery: true,
+        },
+      ]);
     });
   });
 
   describe("applySamples", () => {
-    it("tracks totals, errors and a penalised moving average", () => {
+    it("keeps speed and error rate apart", () => {
       const stats = applySamples(
         {},
         [
@@ -148,45 +228,191 @@ describe("key-stats", () => {
       );
 
       expect(stats.KeyS).toEqual({
-        ema: 2650,
+        emaMs: 100,
+        timed: 1,
+        errRate: 0.5,
         total: 2,
         errors: 1,
         lastSeen: 1000,
       });
       expect(stats.KeyA).toEqual({
-        ema: 0,
+        emaMs: 0,
+        timed: 0,
+        errRate: 0,
         total: 1,
         errors: 0,
         lastSeen: 1000,
       });
-      expect(stats.KeyD?.ema).toEqual(5000);
+      expect(stats.KeyD).toMatchObject({ emaMs: 0, timed: 0, errRate: 1 });
       expect(accuracy(stats.KeyS ?? { total: 0, errors: 0 })).toEqual(50);
+    });
+
+    it("leaves recoveries out of the speed", () => {
+      const stats = applySamples(
+        {},
+        [
+          { keycode: "KeyS", shifted: false, correct: true, spacingMs: 100 },
+          {
+            keycode: "KeyS",
+            shifted: false,
+            correct: true,
+            spacingMs: 2000,
+            recovery: true,
+          },
+        ],
+        0,
+      );
+      expect(stats.KeyS).toMatchObject({ emaMs: 100, timed: 1, total: 2 });
+    });
+
+    it("caps a pause at three times the running average", () => {
+      const stats = applySamples(
+        {},
+        [
+          { keycode: "KeyS", shifted: false, correct: true, spacingMs: 100 },
+          { keycode: "KeyS", shifted: false, correct: true, spacingMs: 9000 },
+        ],
+        0,
+      );
+      expect(stats.KeyS?.emaMs).toEqual(200);
+    });
+  });
+
+  describe("keyLabel", () => {
+    const stat = {
+      emaMs: 100,
+      timed: 10,
+      errRate: 0,
+      total: 10,
+      errors: 0,
+      lastSeen: 0,
+    };
+
+    it("prefers error-prone over slow", () => {
+      expect(keyLabel(stat)).toBeUndefined();
+      expect(keyLabel({ ...stat, emaMs: 700 })).toBe("slow");
+      expect(keyLabel({ ...stat, emaMs: 700, errRate: 0.2 })).toBe(
+        "error-prone",
+      );
+    });
+
+    it("waits for enough samples", () => {
+      expect(keyLabel({ ...stat, total: 3, errRate: 0.5 })).toBeUndefined();
+      expect(keyLabel({ ...stat, timed: 2, emaMs: 900 })).toBeUndefined();
+    });
+  });
+
+  describe("upgradeKeyStats", () => {
+    it("clamps a v1 stat with more errors than samples", () => {
+      const upgraded = upgradeKeyStats({
+        version: 1,
+        layouts: {
+          qwerty: { KeyA: { ema: 100, total: 1, errors: 3, lastSeen: 0 } },
+        },
+      });
+      expect(upgraded.layouts["qwerty"]?.["KeyA"]).toMatchObject({
+        emaMs: 0,
+        timed: 0,
+        errRate: 1,
+      });
+    });
+
+    it("takes the v1 error penalty back out of the average", () => {
+      const upgraded = upgradeKeyStats({
+        version: 1,
+        layouts: {
+          qwerty: {
+            KeyA: { ema: 2650, total: 2, errors: 1, lastSeen: 5 },
+            KeyS: { ema: 100, total: 4, errors: 0, lastSeen: 6 },
+          },
+        },
+      });
+      expect(upgraded).toEqual({
+        version: 2,
+        layouts: {
+          qwerty: {
+            KeyA: {
+              emaMs: 150,
+              timed: 1,
+              errRate: 0.5,
+              total: 2,
+              errors: 1,
+              lastSeen: 5,
+            },
+            KeyS: {
+              emaMs: 100,
+              timed: 4,
+              errRate: 0,
+              total: 4,
+              errors: 0,
+              lastSeen: 6,
+            },
+          },
+        },
+      });
     });
   });
 
   describe("worstKeys", () => {
-    it("ranks by average and skips keys with few samples", () => {
-      const many = (keycode: "KeyA" | "KeyS", ms: number): KeySample[] =>
-        Array.from({ length: 5 }, () => ({
-          keycode,
-          shifted: false,
-          correct: true,
-          spacingMs: ms,
-        }));
+    const many = (
+      keycode: "KeyA" | "KeyS" | "KeyF",
+      ms: number,
+      misses = 0,
+    ): KeySample[] =>
+      Array.from({ length: 5 }, (_value, index) => ({
+        keycode,
+        shifted: false,
+        correct: index >= misses,
+        spacingMs: ms,
+      }));
+
+    it("ranks errors before speed and skips keys with few samples", () => {
       const stats = applySamples(
         {},
         [
           ...many("KeyA", 300),
           ...many("KeyS", 500),
+          ...many("KeyF", 200, 1),
           { keycode: "KeyD", shifted: false, correct: false, spacingMs: 900 },
         ],
         0,
       );
 
       expect(worstKeys(stats, 5).map((key) => key.keycode)).toEqual([
+        "KeyF",
         "KeyS",
         "KeyA",
       ]);
+    });
+
+    it("ranks labelled keys ahead of a small error rate", () => {
+      const stats = applySamples(
+        {},
+        [
+          ...Array.from({ length: 20 }, (_value, index) => ({
+            keycode: "KeyA" as const,
+            shifted: false,
+            correct: index !== 0,
+            spacingMs: 200,
+          })),
+          ...many("KeyS", 800),
+        ],
+        0,
+      );
+      expect(worstKeys(stats, 1).map((key) => key.keycode)).toEqual(["KeyS"]);
+    });
+
+    it("labels the keys it ranks", () => {
+      const stats = applySamples(
+        {},
+        [...many("KeyA", 300), ...many("KeyS", 800), ...many("KeyF", 200, 1)],
+        0,
+      );
+      expect(
+        Object.fromEntries(
+          worstKeys(stats, 5).map((key) => [key.keycode, key.label]),
+        ),
+      ).toEqual({ KeyF: "error-prone", KeyS: "slow", KeyA: undefined });
     });
   });
 
@@ -203,9 +429,37 @@ describe("key-stats", () => {
       );
       const summary = fingerSummary(stats);
 
-      expect(summary.LP).toEqual({ total: 2, errors: 1, avgMs: 2600 });
+      expect(summary.LP).toEqual({ total: 2, errors: 1, avgMs: 100 });
       expect(summary.RI.total).toEqual(1);
       expect(summary.RP.total).toEqual(0);
+    });
+  });
+
+  describe("storage", () => {
+    afterEach(() => {
+      localStorage.removeItem("trainerKeyStats");
+      vi.resetModules();
+    });
+
+    it("upgrades a stored v1 blob on load and writes it back", async () => {
+      localStorage.setItem(
+        "trainerKeyStats",
+        JSON.stringify({
+          version: 1,
+          layouts: {
+            qwerty: { KeyA: { ema: 2650, total: 2, errors: 1, lastSeen: 5 } },
+          },
+        }),
+      );
+      vi.resetModules();
+      const fresh = await import("../../src/ts/trainer/key-stats");
+      expect(fresh.getKeyStats().layouts["qwerty"]?.["KeyA"]).toMatchObject({
+        emaMs: 150,
+        errRate: 0.5,
+      });
+      expect(
+        JSON.parse(localStorage.getItem("trainerKeyStats") ?? "{}").version,
+      ).toBe(2);
     });
   });
 });

@@ -358,6 +358,24 @@ export const configMetadata: ConfigMetadataObject = {
       return {};
     },
   },
+  trainerUnlock: {
+    key: "trainerUnlock",
+    fa: { icon: "fa-graduation-cap" },
+    displayString: "trainer unlock",
+    changeRequiresRestart: false,
+    group: "behavior",
+    description:
+      "How hard a trainer lesson is to pass. Relaxed unlocks the next lesson at 25 wpm and 95% accuracy, normal at 30 wpm and 97%, strict needs 35 wpm and 98% on two tests in a row. Lessons already unlocked stay unlocked.",
+  },
+  trainerWordsPerTest: {
+    key: "trainerWordsPerTest",
+    fa: { icon: "fa-graduation-cap" },
+    displayString: "trainer words per test",
+    changeRequiresRestart: false,
+    group: "behavior",
+    description:
+      "How many words a trainer lesson test contains, from 10 to 200.",
+  },
   minAcc: {
     key: "minAcc",
     fa: { icon: "fa-bomb" },

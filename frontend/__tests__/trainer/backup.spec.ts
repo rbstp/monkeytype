@@ -25,6 +25,26 @@ describe("backup", () => {
     expect(progress().current).toBe(3);
   });
 
+  it("upgrades v1 key stats on import", () => {
+    const json = JSON.stringify({
+      version: 1,
+      keyStats: {
+        version: 1,
+        layouts: {
+          qwerty: { KeyA: { ema: 2650, total: 2, errors: 1, lastSeen: 5 } },
+        },
+      },
+      progress: { version: 1, current: 0, unlocked: 0, attempts: [] },
+    });
+    expect(importBackup(json)).toBe(true);
+    expect(getKeyStats().version).toBe(2);
+    expect(getKeyStats().layouts["qwerty"]?.["KeyA"]).toMatchObject({
+      emaMs: 150,
+      errRate: 0.5,
+      total: 2,
+    });
+  });
+
   it("rejects malformed input", () => {
     expect(parseBackup("not json")).toBeUndefined();
     expect(parseBackup('{"version":2}')).toBeUndefined();

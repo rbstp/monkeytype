@@ -13,6 +13,7 @@ import {
   worstKeys,
 } from "../../../trainer/key-stats";
 import { buildTips } from "../../../trainer/tips";
+import { cn } from "../../../utils/cn";
 import { keycodeToLayoutKey } from "../../../utils/key-converter";
 import { resolveLayoutName } from "../../../utils/layout-name";
 
@@ -61,8 +62,20 @@ export function WeakKeysPanel() {
               {(key) => (
                 <div class="min-w-16 rounded bg-sub-alt px-3 py-2 text-center">
                   <div class="text-lg text-text">{legend(key.keycode)}</div>
-                  <div class="text-xs">{Math.round(key.ema)} ms</div>
+                  <div class="text-xs">
+                    {key.timed > 0 ? `${Math.round(key.emaMs)} ms` : "no time"}
+                  </div>
                   <div class="text-xs">{Math.round(accuracy(key))}%</div>
+                  <Show when={key.label !== undefined}>
+                    <div
+                      class={cn(
+                        "text-xs",
+                        key.label === "error-prone" ? "text-error" : "text-sub",
+                      )}
+                    >
+                      {key.label}
+                    </div>
+                  </Show>
                 </div>
               )}
             </For>

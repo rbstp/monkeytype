@@ -96,6 +96,8 @@ export function SettingsPage(): JSXElement {
             <Funbox />
             <CustomLayoutfluid />
             <CustomPolyglot />
+            <SearchableAutoSetting key="trainerUnlock" />
+            <SearchableAutoSetting key="trainerWordsPerTest" />
           </Section>
           <Section title="input">
             <SearchableAutoSetting key="freedomMode" />
