@@ -11,6 +11,13 @@ import { debounce } from "throttle-debounce";
 
 let configToSend: Partial<ConfigSchemas.Config> = {};
 
+type PersistedConfigHook = (config: ConfigSchema) => ConfigSchema;
+let persistedConfig: PersistedConfigHook = (config) => config;
+
+export function setPersistedConfigHook(hook: PersistedConfigHook): void {
+  persistedConfig = hook;
+}
+
 export const configLS = new LocalStorageWithSchema({
   key: "config",
   schema: ConfigSchemas.ConfigSchema,
@@ -30,20 +37,22 @@ export function saveToLocalStorage(
   noDbCheck = false,
 ): void {
   if (nosave) return;
-  configLS.set(Config);
+  const config = persistedConfig(Config);
+  configLS.set(config);
   if (!noDbCheck) {
     //@ts-expect-error this is fine
-    configToSend[key] = Config[key];
+    configToSend[key] = config[key];
     saveToDatabase();
   }
 }
 
 export function saveFullConfigToLocalStorage(noDbCheck = false): void {
   console.log("saving full config to localStorage");
-  configLS.set(Config);
+  const config = persistedConfig(Config);
+  configLS.set(config);
   if (!noDbCheck) {
     setAccountButtonSpinner(true);
-    void saveConfig(Config).finally(() => {
+    void saveConfig(config).finally(() => {
       setAccountButtonSpinner(false);
     });
   }

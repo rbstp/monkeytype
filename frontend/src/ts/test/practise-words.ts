@@ -14,6 +14,7 @@ import {
 } from "./events/stats";
 import { setCustomTextIndicator } from "../states/core";
 import { getLastEventLog } from "../states/test";
+import { stopLesson } from "../trainer/session";
 
 type Before = {
   mode: Mode | null;
@@ -150,6 +151,8 @@ export function init(
     }
   });
 
+  // practice replaces the lesson, so capture the config from before the lesson
+  stopLesson();
   const mode = before.mode ?? Config.mode;
   const punctuation = before.punctuation ?? Config.punctuation;
   const numbers = before.numbers ?? Config.numbers;

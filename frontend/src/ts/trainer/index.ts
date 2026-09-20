@@ -8,7 +8,13 @@ import {
   recordSamples,
   samplesFromEventLog,
 } from "./key-stats";
-import { countPerKey, LESSONS, recordAttempt } from "./lessons";
+import {
+  countPerKey,
+  isLessonText,
+  lessonChars,
+  LESSONS,
+  recordAttempt,
+} from "./lessons";
 import { getActiveLesson } from "./session";
 
 export { tracksNextKey } from "./session";
@@ -32,13 +38,22 @@ export function onTestFinished(test: FinishedTest): void {
     test.countsForLesson &&
     !test.completedEvent.bailedOut &&
     Config.mode === "custom";
+  const recordKeys = !Config.funbox.includes("layoutfluid");
 
   __nonReactive
     .getInputLayout()
     .then((layout) => {
       const samples = samplesFromEventLog(test.eventLog, layout);
-      recordSamples(layoutName, samples);
-      if (!recordLesson) return;
+      if (recordKeys) recordSamples(layoutName, samples);
+      if (
+        !recordLesson ||
+        !isLessonText(
+          test.eventLog.context.targetWords,
+          lessonChars(lessonIndex, layout).allowed,
+        )
+      ) {
+        return;
+      }
 
       const unlocked = recordAttempt({
         lesson: lessonIndex,

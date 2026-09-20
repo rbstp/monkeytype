@@ -107,8 +107,8 @@ export async function applyConfig(
     saveToLocalStorage(key);
   }
 
-  configEvent.dispatch({ key: "fullConfigChangeFinished" });
   setFullConfigStore(fullConfig);
+  configEvent.dispatch({ key: "fullConfigChangeFinished", fullConfig });
 }
 
 export async function resetConfig(): Promise<void> {
