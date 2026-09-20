@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LayoutObject } from "@monkeytype/schemas/layouts";
+import { LayoutName, LayoutObject } from "@monkeytype/schemas/layouts";
 import { Keycode } from "../constants/keys";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { EventLog } from "../test/events/types";
@@ -34,9 +34,8 @@ export type KeySample = {
   spacingMs?: number;
 };
 
-export function layoutStatsName(layout: string, funbox: string[]): string {
-  const name = layout === "default" ? "qwerty" : layout;
-  return funbox.includes("layout_mirror") ? `${name}_mirrored` : name;
+export function layoutStatsName(layout: LayoutName, funbox: string[]): string {
+  return funbox.includes("layout_mirror") ? `${layout}_mirrored` : layout;
 }
 
 /**

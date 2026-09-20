@@ -24,6 +24,7 @@ import { getSection } from "../wikipedia";
 import * as WeakSpot from "../weak-spot";
 import * as IPAddresses from "../../utils/ip-addresses";
 import { getActiveWordIndex } from "../../states/test";
+import { resolveLayoutName } from "../../utils/layout-name";
 import { WordGenError } from "../../utils/word-gen-error";
 import { FunboxName, KeymapLayout, Layout } from "@monkeytype/schemas/configs";
 import { Language, LanguageObject } from "@monkeytype/schemas/languages";
@@ -358,10 +359,7 @@ const list: Partial<Record<FunboxName, FunboxFunctions>> = {
   },
   layout_mirror: {
     applyConfig(): void {
-      let layout = Config.layout;
-      if (Config.layout === "default") {
-        layout = "qwerty";
-      }
+      const layout = resolveLayoutName(Config.layout, Config.keymapLayout);
       setConfig("layout", layout, {
         nosave: true,
       });

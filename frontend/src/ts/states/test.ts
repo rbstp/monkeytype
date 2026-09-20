@@ -14,6 +14,7 @@ import * as CustomText from "../test/custom-text";
 import { QuoteWithTextSplit } from "../types/quotes";
 import { getLayout } from "../utils/json-data";
 import { mirrorLayoutKeys } from "../utils/key-converter";
+import { resolveLayoutName } from "../utils/layout-name";
 import { canQuickRestart } from "../utils/quick-restart";
 import { replaceUnderscoresWithSpaces } from "../utils/strings";
 import { getActivePage, getCustomTextIndicator } from "./core";
@@ -140,10 +141,10 @@ export const getKeymapLayout = createMemo<{
   layoutNameDisplayString: string;
   isMirrored: boolean;
 }>(() => {
-  const isOverride = getConfig.keymapLayout === "overrideSync";
-  const raw = isOverride ? getConfig.layout : getConfig.keymapLayout;
+  const keymapLayout = getConfig.keymapLayout;
+  const raw = keymapLayout === "overrideSync" ? getConfig.layout : keymapLayout;
 
-  const layout = raw === "default" ? "qwerty" : raw;
+  const layout = resolveLayoutName(raw, keymapLayout);
   const layoutNameDisplayString = replaceUnderscoresWithSpaces(raw);
   const isMirrored = getConfig.funbox.includes("layout_mirror");
 
@@ -181,8 +182,12 @@ const getInputLayout = createMemo<{
   layout: string;
   isMirrored: boolean;
 }>(() => {
+  const layout = getConfig.layout;
   return {
-    layout: getConfig.layout === "default" ? "qwerty" : getConfig.layout,
+    layout:
+      layout === "default"
+        ? resolveLayoutName(layout, getConfig.keymapLayout)
+        : layout,
     isMirrored: getConfig.funbox.includes("layout_mirror"),
   };
 });
