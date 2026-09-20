@@ -14,6 +14,8 @@ import {
   lessonChars,
   lessonIndex,
   LESSONS,
+  masteryOf,
+  masterySamplesFor,
   progress,
   Progress,
   ProgressV1,
@@ -23,8 +25,20 @@ import {
   setCurrentLesson,
   trimAttempts,
   unlockedUpTo,
+  unlockStatus,
+  UnlockStatus,
   upgradeProgress,
 } from "../../src/ts/trainer/lessons";
+
+function mastered(id: string, samples = 20): Attempt["perKey"] {
+  const lesson = LESSONS[lessonIndex(id)];
+  return Object.fromEntries(
+    (lesson?.newKeys ?? []).map((keycode) => [
+      keycode,
+      { total: samples, errors: 0 },
+    ]),
+  );
+}
 
 const qwerty = JSON.parse(
   readFileSync(
@@ -182,10 +196,7 @@ describe("lessons", () => {
       layout: "qwerty",
       wpm: 35,
       acc: 98,
-      perKey: {
-        KeyE: { total: 10, errors: 0 },
-        KeyI: { total: 10, errors: 0 },
-      },
+      perKey: mastered("e-i"),
       ts: 0,
       ...overrides,
     });
@@ -207,10 +218,73 @@ describe("lessons", () => {
       expect(unlocks([attempt({ layout: "dvorak" })])).toBe(false);
     });
 
-    it("ignores per-key accuracy", () => {
+    it("needs every new key mastered on top of the floors", () => {
       expect(
         unlocks([attempt({ perKey: { KeyE: { total: 2, errors: 2 } } })]),
+      ).toBe(false);
+      expect(
+        unlocks([
+          attempt({
+            perKey: {
+              KeyE: { total: 20, errors: 0 },
+              KeyI: { total: 19, errors: 0 },
+            },
+          }),
+        ]),
+      ).toBe(false);
+      expect(
+        unlocks([
+          attempt({
+            perKey: {
+              KeyE: { total: 20, errors: 0 },
+              KeyI: { total: 100, errors: 4 },
+            },
+          }),
+        ]),
+      ).toBe(false);
+      expect(
+        unlocks([
+          attempt({
+            perKey: {
+              KeyE: { total: 20, errors: 0 },
+              KeyI: { total: 100, errors: 3 },
+            },
+          }),
+        ]),
       ).toBe(true);
+    });
+
+    it("pools mastery over the last three attempts", () => {
+      const seven = attempt({
+        perKey: {
+          KeyE: { total: 7, errors: 0 },
+          KeyI: { total: 7, errors: 0 },
+        },
+      });
+      expect(unlocks([seven, seven])).toBe(false);
+      expect(unlocks([seven, seven, seven])).toBe(true);
+      expect(unlocks([attempt(), seven, seven, seven])).toBe(true);
+      const thin = attempt({
+        perKey: {
+          KeyE: { total: 1, errors: 0 },
+          KeyI: { total: 1, errors: 0 },
+        },
+      });
+      expect(unlocks([attempt(), thin, thin, thin])).toBe(false);
+    });
+
+    it("fails mastery while the floors pass", () => {
+      const status = unlockStatus(
+        [attempt({ perKey: { KeyE: { total: 20, errors: 0 } } })],
+        "e-i",
+        "qwerty",
+      );
+      expect(status.ok).toBe(false);
+      expect(status.wpmShort).toBe(0);
+      expect(status.accShort).toBe(0);
+      expect(status.weakKeys).toEqual([
+        { keycode: "KeyI", samples: 0, errors: 0, required: 20 },
+      ]);
     });
 
     it("compares the values shown on the result screen", () => {
@@ -232,6 +306,142 @@ describe("lessons", () => {
       expect(unlocks([pass, pass], strict)).toBe(true);
       expect(unlocks([pass, attempt({ wpm: 34 }), pass], strict)).toBe(false);
       expect(unlocks([attempt({ wpm: 34 }), pass, pass], strict)).toBe(true);
+    });
+  });
+
+  describe("masteryOf", () => {
+    const attempt = (
+      perKey: Attempt["perKey"],
+      layout = "qwerty",
+    ): Attempt => ({
+      lesson: "e-i",
+      layout,
+      wpm: 30,
+      acc: 97,
+      perKey,
+      ts: 0,
+    });
+
+    it("lists every new key of the lesson with zero counts", () => {
+      expect(masteryOf([], "e-i", "qwerty")).toEqual({
+        KeyE: { samples: 0, errors: 0, required: 20 },
+        KeyI: { samples: 0, errors: 0, required: 20 },
+      });
+      expect(masteryOf([], "missing", "qwerty")).toEqual({});
+    });
+
+    it("shares the sample budget across wide lessons", () => {
+      const required = (id: string): number =>
+        masterySamplesFor(LESSONS[lessonIndex(id)] as (typeof LESSONS)[0]);
+      expect(required("e-i")).toBe(20);
+      expect(required("punctuation")).toBe(12);
+      expect(required("home-row")).toBe(8);
+      expect(required("numbers")).toBe(6);
+      expect(required("capitals")).toBe(3);
+      expect(masteryOf([], "capitals", "qwerty")["KeyQ"]).toEqual({
+        samples: 0,
+        errors: 0,
+        required: 3,
+      });
+    });
+
+    it("pools only the last three attempts of that lesson and layout", () => {
+      const attempts = [
+        attempt({ KeyE: { total: 100, errors: 50 } }),
+        attempt({ KeyE: { total: 5, errors: 1 } }),
+        attempt({
+          KeyE: { total: 6, errors: 0 },
+          KeyA: { total: 9, errors: 9 },
+        }),
+        attempt({ KeyE: { total: 40, errors: 0 } }, "dvorak"),
+        attempt({ KeyI: { total: 7, errors: 2 } }),
+      ];
+      expect(masteryOf(attempts, "e-i", "qwerty")).toEqual({
+        KeyE: { samples: 11, errors: 1, required: 20 },
+        KeyI: { samples: 7, errors: 2, required: 20 },
+      });
+    });
+  });
+
+  describe("unlockStatus", () => {
+    const attempt = (overrides: Partial<Attempt> = {}): Attempt => ({
+      lesson: "e-i",
+      layout: "qwerty",
+      wpm: 35,
+      acc: 98,
+      perKey: mastered("e-i"),
+      ts: 0,
+      ...overrides,
+    });
+    const status = (
+      attempts: Attempt[],
+      criteria = defaultCriteria,
+    ): UnlockStatus => unlockStatus(attempts, "e-i", "qwerty", criteria);
+
+    it("passes with the floors and every key mastered", () => {
+      expect(status([attempt()])).toEqual({
+        ok: true,
+        wpmShort: 0,
+        accShort: 0,
+        weakKeys: [],
+      });
+    });
+
+    it("reports the wpm shortfall from the rounded latest attempt", () => {
+      expect(status([attempt({ wpm: 26.6 })])).toMatchObject({
+        ok: false,
+        wpmShort: 3,
+        accShort: 0,
+      });
+      expect(status([attempt(), attempt({ wpm: 20 })]).wpmShort).toBe(10);
+    });
+
+    it("reports the accuracy shortfall from the floored latest attempt", () => {
+      expect(status([attempt({ acc: 95.9 })])).toMatchObject({
+        ok: false,
+        wpmShort: 0,
+        accShort: 2,
+      });
+    });
+
+    it("reports each weak key with its pooled counts", () => {
+      expect(
+        status([
+          attempt({
+            perKey: {
+              KeyE: { total: 8, errors: 1 },
+              KeyI: { total: 50, errors: 2 },
+            },
+          }),
+        ]),
+      ).toMatchObject({
+        ok: false,
+        weakKeys: [
+          { keycode: "KeyE", samples: 8, errors: 1, required: 20 },
+          { keycode: "KeyI", samples: 50, errors: 2, required: 20 },
+        ],
+      });
+    });
+
+    it("asks for the whole bar without attempts", () => {
+      expect(status([])).toEqual({
+        ok: false,
+        wpmShort: 30,
+        accShort: 97,
+        weakKeys: [
+          { keycode: "KeyE", samples: 0, errors: 0, required: 20 },
+          { keycode: "KeyI", samples: 0, errors: 0, required: 20 },
+        ],
+      });
+    });
+
+    it("needs the strict window even when the latest attempt passes", () => {
+      expect(status([attempt()], criteriaFor("strict"))).toMatchObject({
+        ok: false,
+        wpmShort: 0,
+        accShort: 0,
+        weakKeys: [],
+      });
     });
   });
 
@@ -371,7 +581,14 @@ describe("lessons", () => {
       layout: string,
       wpm: number,
       acc = 100,
-    ): Attempt => ({ lesson, layout, wpm, acc, perKey: {}, ts: 0 });
+    ): Attempt => ({
+      lesson,
+      layout,
+      wpm,
+      acc,
+      perKey: mastered(lesson),
+      ts: 0,
+    });
 
     beforeEach(() => {
       setConfigStore("layout", "default");
@@ -461,6 +678,15 @@ describe("lessons", () => {
           JSON.parse(localStorage.getItem("trainerProgress") ?? "{}").version,
         ).toBe(2);
       });
+    });
+
+    it("stores an attempt that passes the floors but not mastery without unlocking", () => {
+      expect(
+        recordAttempt({ ...attempt("home-row", "qwerty", 40), perKey: {} }),
+      ).toBe(false);
+      expect(unlockedUpTo()).toBe(0);
+      expect(bestOf("home-row")).toBe(40);
+      expect(progress().attempts).toHaveLength(1);
     });
 
     it("re-evaluates unlocks per layout on replace", () => {

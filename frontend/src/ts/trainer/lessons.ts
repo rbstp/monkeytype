@@ -415,23 +415,129 @@ export function trimAttempts(attempts: Attempt[]): Attempt[] {
   return kept.reverse();
 }
 
+const masteryWindow = 3;
+const masterySampleBudget = 60;
+const maxMasterySamples = 20;
+const minMasterySamples = 3;
+export const masteryErrorRate = 0.03;
+
+export type KeyMastery = { samples: number; errors: number; required: number };
+
+/**
+ * Three attempts of a lesson yield about 60 fresh samples in total, so a wide
+ * lesson such as capitals shares that budget across its keys instead of asking
+ * 20 of each.
+ */
+export function masterySamplesFor(lesson: Lesson): number {
+  return Math.min(
+    maxMasterySamples,
+    Math.max(
+      minMasterySamples,
+      Math.ceil(masterySampleBudget / lesson.newKeys.length),
+    ),
+  );
+}
+
+function attemptsOf(
+  attempts: Attempt[],
+  lesson: string,
+  layout: string,
+): Attempt[] {
+  return attempts.filter(
+    (attempt) => attempt.lesson === lesson && attempt.layout === layout,
+  );
+}
+
+/**
+ * Pools the per-key counts of the last three attempts, so one clean test
+ * cannot mask a key that failed in the two before it.
+ */
+export function masteryOf(
+  attempts: Attempt[],
+  lesson: string,
+  layout: string,
+): Record<string, KeyMastery> {
+  const index = lessonIndex(lesson);
+  const mastery: Record<string, KeyMastery> = {};
+  if (index === -1) return mastery;
+  const item = LESSONS[index] as Lesson;
+  const required = masterySamplesFor(item);
+  for (const keycode of item.newKeys) {
+    mastery[keycode] = { samples: 0, errors: 0, required };
+  }
+  for (const attempt of attemptsOf(attempts, lesson, layout).slice(
+    -masteryWindow,
+  )) {
+    for (const [keycode, count] of Object.entries(attempt.perKey)) {
+      const pooled = mastery[keycode];
+      if (pooled === undefined) continue;
+      pooled.samples += count.total;
+      pooled.errors += count.errors;
+    }
+  }
+  return mastery;
+}
+
+export type WeakKey = { keycode: Keycode } & KeyMastery;
+
+export type UnlockStatus = {
+  ok: boolean;
+  wpmShort: number;
+  accShort: number;
+  weakKeys: WeakKey[];
+};
+
+export function isWeak(key: KeyMastery): boolean {
+  return (
+    key.samples < key.required || key.errors > key.samples * masteryErrorRate
+  );
+}
+
+/**
+ * Compares the values the result screen shows, so a displayed 30 wpm / 97%
+ * always passes the bar it is measured against.
+ */
+export function unlockStatus(
+  attempts: Attempt[],
+  lesson: string,
+  layout: string,
+  criteria: UnlockCriteria = defaultCriteria,
+): UnlockStatus {
+  const recent = attemptsOf(attempts, lesson, layout).slice(-criteria.window);
+  const latest = recent[recent.length - 1];
+  const wpmShort =
+    latest === undefined
+      ? criteria.minWpm
+      : Math.max(0, criteria.minWpm - Math.round(latest.wpm));
+  const accShort =
+    latest === undefined
+      ? criteria.minAcc
+      : Math.max(0, criteria.minAcc - Math.floor(latest.acc));
+  const floors =
+    recent.length >= criteria.window &&
+    recent.every(
+      (attempt) =>
+        Math.floor(attempt.acc) >= criteria.minAcc &&
+        Math.round(attempt.wpm) >= criteria.minWpm,
+    );
+  const weakKeys = (
+    Object.entries(masteryOf(attempts, lesson, layout)) as [
+      Keycode,
+      KeyMastery,
+    ][]
+  )
+    .filter(([, key]) => isWeak(key))
+    .map(([keycode, key]) => ({ keycode, ...key }));
+  return { ok: floors && weakKeys.length === 0, wpmShort, accShort, weakKeys };
+}
+
 export function canUnlock(
   attempts: Attempt[],
   lesson: string,
   layout: string,
   criteria: UnlockCriteria = defaultCriteria,
 ): boolean {
-  const recent = attempts
-    .filter((attempt) => attempt.lesson === lesson && attempt.layout === layout)
-    .slice(-criteria.window);
-  if (recent.length < criteria.window) return false;
-  // compare the values the result screen shows, so a displayed 30 wpm / 97%
-  // always passes the bar it is measured against
-  return recent.every(
-    (attempt) =>
-      Math.floor(attempt.acc) >= criteria.minAcc &&
-      Math.round(attempt.wpm) >= criteria.minWpm,
-  );
+  return unlockStatus(attempts, lesson, layout, criteria).ok;
 }
 
 const [progress, setProgress] = useLocalStorage<Progress>({
@@ -487,7 +593,7 @@ function unlockedAfterSync(
   let next = unlocked;
   while (
     next + 1 < LESSONS.length &&
-    canUnlock(attempts, (LESSONS[next] as Lesson).id, layout, criteria)
+    unlockStatus(attempts, (LESSONS[next] as Lesson).id, layout, criteria).ok
   ) {
     next++;
   }
@@ -551,12 +657,12 @@ export function recordAttempt(attempt: Attempt): boolean {
       unlockedNow =
         next < LESSONS.length &&
         entry.unlocked < next &&
-        canUnlock(
+        unlockStatus(
           attempts,
           attempt.lesson,
           attempt.layout,
           criteriaFor(Config.trainerUnlock),
-        );
+        ).ok;
       const known = entry.best[attempt.lesson];
       return {
         ...entry,

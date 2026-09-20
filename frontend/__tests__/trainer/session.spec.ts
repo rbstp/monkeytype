@@ -23,6 +23,7 @@ import {
   currentLesson,
   isLessonText,
   lessonChars,
+  LESSONS,
   progress,
   Progress,
   recordAttempt,
@@ -88,6 +89,20 @@ function finished(targetWords: string[]): void {
 const flush = async (): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, 0));
 
+function attemptFor(lesson: string, samples: number): Attempt {
+  const keys = LESSONS.find((item) => item.id === lesson)?.newKeys ?? [];
+  return {
+    lesson,
+    layout: "qwerty",
+    wpm: 40,
+    acc: 100,
+    perKey: Object.fromEntries(
+      keys.map((keycode) => [keycode, { total: samples, errors: 0 }]),
+    ),
+    ts: 0,
+  };
+}
+
 describe("trainer session", () => {
   const getInputLayoutMock = vi
     .spyOn(TestState.__nonReactive, "getInputLayout")
@@ -99,6 +114,9 @@ describe("trainer session", () => {
   const noticeMock = vi
     .spyOn(Notifications, "showNoticeNotification")
     .mockReturnValue(0);
+  const successMock = vi
+    .spyOn(Notifications, "showSuccessNotification")
+    .mockReturnValue(0);
   const saveConfigMock = vi.spyOn(ApeConfig, "saveConfig").mockResolvedValue();
 
   beforeEach(() => {
@@ -106,6 +124,7 @@ describe("trainer session", () => {
     resetProgress();
     resetKeyStats();
     noticeMock.mockClear();
+    successMock.mockClear();
     saveConfigMock.mockClear();
     replaceConfig({ mode: "time", punctuation: true, numbers: false });
     CustomText.setText(["before"]);
@@ -116,6 +135,7 @@ describe("trainer session", () => {
     getInputLayoutMock.mockRestore();
     getLanguageMock.mockRestore();
     noticeMock.mockRestore();
+    successMock.mockRestore();
     saveConfigMock.mockRestore();
   });
 
@@ -291,7 +311,12 @@ describe("trainer session", () => {
       layout: "qwerty",
       wpm,
       acc,
-      perKey: {},
+      perKey: Object.fromEntries(
+        (LESSONS[0]?.newKeys ?? []).map((keycode) => [
+          keycode,
+          { total: 20, errors: 0 },
+        ]),
+      ),
       ts: 0,
     });
     const stored = (attempts: Attempt[]): Progress => ({
@@ -421,6 +446,46 @@ describe("trainer session", () => {
       });
       expect(currentLesson()).toBe(0);
       expect(progress().layouts["qwerty"]?.best).toEqual({ "home-row": 40 });
+    });
+
+    it("passes the floors on one key without a toast or an unlock", async () => {
+      await startLesson(0);
+
+      finished(["as ", "sad ", "fall "]);
+      await flush();
+
+      expect(progress().attempts[0]?.perKey).toEqual({
+        KeyA: { total: 1, errors: 0 },
+      });
+      expect(unlockedUpTo()).toBe(0);
+      expect(successMock).not.toHaveBeenCalled();
+    });
+
+    it("toasts the unlock once every new key is mastered", async () => {
+      await startLesson(0);
+      replaceProgress({
+        version: 2,
+        layouts: {},
+        attempts: [
+          {
+            ...attemptFor("home-row", 8),
+            perKey: {
+              ...attemptFor("home-row", 8).perKey,
+              KeyA: { total: 7, errors: 0 },
+            },
+          },
+        ],
+      });
+      expect(unlockedUpTo()).toBe(0);
+
+      finished(["as ", "sad ", "fall "]);
+      await flush();
+
+      expect(unlockedUpTo()).toBe(1);
+      expect(successMock).toHaveBeenCalledWith(
+        "Lesson 2 unlocked: e i",
+        expect.anything(),
+      );
     });
 
     it("records key samples under the keymap layout for a default layout", async () => {

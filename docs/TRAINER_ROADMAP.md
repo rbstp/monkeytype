@@ -16,7 +16,7 @@ Gaps:
 
 - The chip at LessonNotice.tsx now names the active lesson, its best and the target on the test screen. Feedback beyond it is still one toast at index.ts:51.
 - Key stats v2 keeps speed apart from errors: emaMs takes only correct, non-recovery samples with pauses capped at three times the average, errRate is its own moving average, and deletes advance the clock. Shift is still folded into the base key in key-stats.ts. Panel and tips label keys slow or error-prone.
-- Unlocks use test-level numbers: canUnlock in lessons.ts reads the bar from trainerUnlock through criteriaFor, and only strict asks for two passes in a row; perKey from index.ts is still read nowhere.
+- Unlocks read the configured floor through criteriaFor and, since the mastery gate, `masteryOf` in lessons.ts pools perKey over the last three attempts: a new key needs 20 samples and at most 3% errors before `unlockStatus` says ok. The shortfall has no surface yet beyond the missing toast.
 - Early lessons are gibberish: english.json has 3 home-row words, so with minReal 30 at lessons.ts:118 lessons 1-4 are mostly "afa sas dad" from lessons.ts:142-171. The pool is built once at session.ts:126-150.
 - Layout is assumed qwerty in the lesson names hardcoded at lessons.ts:63-73. "default" resolves through keymapLayout in utils/layout-name.ts, and progress is per layout since Progress v2: `progressLayout()` in lessons.ts names the entry that `currentLesson()`, `unlockedUpTo()` and `bestOf()` read.
 - Config leaks: lifecycle.ts:110-111 fires the finished event before the store is set, preset-controller.ts:46 saves lesson values to the account, session.ts:209-213 lets punctuation alter scored text.
@@ -81,7 +81,7 @@ A lesson unlocks when its new keys are mastered, not when old keys mask weak one
 
 perKey is recorded per attempt and never read. Pool the last three attempts, require 20 fresh samples and at most 3% fresh errors, keep the configured floors. The reviewer showed a 95% Wilson bound is unreachable at 15 samples, so use plain counts; a per-key minAcc was cut because failed tests are never recorded.
 
-First slice: masteryOf and unlockStatus wired into canUnlock, plus a shortfall notice on the result card.
+First slice landed in `feat(trainer): mastery-and-phases, gate unlocks on per-key mastery`: masteryOf and unlockStatus wired into canUnlock, syncUnlocked and recordAttempt, plain counts, capitals pool shifted samples only. The shortfall notice arrives with the result card in build-order step 9.
 
 Risk: the shortfall copy needs a surface; the indicator never renders today.
 
@@ -189,7 +189,7 @@ Dropped by decision 2. Kept here for the record: stage one was a managed trainer
 6. key-stats.ts:27,84-86 folds a 5000 ms penalty into a value shown as ms. Done in key stats v2.
 7. key-stats.ts:51-59 skips deletes without advancing the clock; no pause cap. Done in key stats v2.
 8. key-stats.ts:95-111 ignores sample.shifted.
-9. lessons.ts:297-313 canUnlock ignores perKey; lessons.spec.ts:156 locks this in.
+9. lessons.ts:297-313 canUnlock ignored perKey. Done in the mastery gate: canUnlock goes through unlockStatus and lessons.spec.ts covers the pooling and the shortfalls.
 10. lessons.ts:265,355 capped attempts at 100 across all lessons. Done in foundations C: `trimAttempts` keeps 1000 overall and 50 per lesson and layout.
 11. The progress store in lessons.ts passed no migrate; backup.ts was v1-literal for progress. Done in foundations C: `upgradeProgress` runs from the localStorage hook and from the backup union.
 12. lessons.ts:257-262 progress was global and attempts lacked a layout field. Done in foundations C: `Progress.layouts` keyed by `progressLayout()`, `Attempt.layout` and `Attempt.lesson` as an id.
@@ -208,7 +208,7 @@ Now, the page and the signals everything reads:
 Next, honest data and surfaces on it:
 
 7. foundations C: Progress v2 with lesson ids, layout field, per-layout current and unlocked, larger cap; backup v2. Done in `feat(trainer): foundations C, progress v2 with lesson ids and per-layout state`; covers foundation items 10 to 12 above.
-8. mastery-and-phases: the gate only, on top of the configured floor.
+8. mastery-and-phases: the gate only, on top of the configured floor. Done in `feat(trainer): mastery-and-phases, gate unlocks on per-key mastery`; covers foundation item 9 above.
 9. feedback-loop: the result card with retry and next.
 10. progress-dashboard: attempts chart and per-lesson table on the page.
 11. adaptive-words: corpus and Zipf slice.
