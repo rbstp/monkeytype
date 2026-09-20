@@ -304,6 +304,18 @@ export function countPerKey(
   return counts;
 }
 
+export function bestWpm(
+  attempts: Attempt[],
+  lesson: number,
+): number | undefined {
+  let best: number | undefined;
+  for (const attempt of attempts) {
+    if (attempt.lesson !== lesson) continue;
+    if (best === undefined || attempt.wpm > best) best = attempt.wpm;
+  }
+  return best;
+}
+
 export function canUnlock(
   attempts: Attempt[],
   lesson: number,

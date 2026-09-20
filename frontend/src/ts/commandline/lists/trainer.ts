@@ -1,31 +1,20 @@
+import { navigate } from "../../controllers/route-controller";
 import {
   showErrorNotification,
-  showNoticeNotification,
   showSuccessNotification,
 } from "../../states/notifications";
 import { isTestActive } from "../../states/test";
 import * as TestLogic from "../../test/test-logic";
+import { beginLesson } from "../../trainer/actions";
 import { exportBackup, importBackup } from "../../trainer/backup";
 import { resetKeyStats } from "../../trainer/key-stats";
 import { LESSONS, progress, resetProgress } from "../../trainer/lessons";
-import {
-  getActiveLesson,
-  startLesson,
-  stopLesson,
-} from "../../trainer/session";
+import { getActiveLesson, stopLesson } from "../../trainer/session";
 import { Command, CommandsSubgroup } from "../types";
 
 const icon = "fa-graduation-cap";
 
 const notDuringTest = (): boolean => !isTestActive();
-
-async function begin(index: number): Promise<void> {
-  if (progress().unlocked < index) {
-    showNoticeNotification("Pass the previous lesson first.");
-    return;
-  }
-  if (await startLesson(index)) await TestLogic.restart();
-}
 
 function lessonDisplay(index: number): string {
   const locked = progress().unlocked < index ? " (locked)" : "";
@@ -40,7 +29,7 @@ const lessonList: CommandsSubgroup = {
     icon,
     available: notDuringTest,
     active: (): boolean => getActiveLesson() === index,
-    exec: (): void => void begin(index),
+    exec: (): void => void beginLesson(index),
   })),
   beforeList: (): void => {
     for (const [index, command] of lessonList.list.entries()) {
@@ -56,7 +45,7 @@ const commands: Command[] = [
     alias: "typing tutor practice",
     icon,
     available: notDuringTest,
-    exec: (): void => void begin(progress().current),
+    exec: (): void => void beginLesson(progress().current),
   },
   {
     id: "trainerNext",
@@ -64,7 +53,14 @@ const commands: Command[] = [
     icon,
     available: (): boolean =>
       notDuringTest() && progress().unlocked > progress().current,
-    exec: (): void => void begin(progress().current + 1),
+    exec: (): void => void beginLesson(progress().current + 1),
+  },
+  {
+    id: "trainerOpen",
+    display: "Trainer: open page",
+    alias: "trainer page navigate go to",
+    icon,
+    exec: (): void => void navigate("/trainer"),
   },
   {
     id: "trainerChoose",

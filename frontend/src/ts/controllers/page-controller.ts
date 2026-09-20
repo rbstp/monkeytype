@@ -75,6 +75,7 @@ const pages = {
     },
   }),
   about: solidPage("about"),
+  trainer: solidPage("trainer"),
   account: solidPage("account", {
     loadingOptions: {
       loadingMode: () => {

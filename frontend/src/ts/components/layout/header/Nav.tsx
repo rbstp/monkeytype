@@ -116,6 +116,19 @@ export function Nav(): JSXElement {
       <Button
         variant="text"
         fa={{
+          icon: "fa-graduation-cap",
+          fixedWidth: true,
+        }}
+        class={buttonClass()}
+        dataset={{
+          "data-nav-item": "trainer",
+        }}
+        href="/trainer"
+        router-link
+      />
+      <Button
+        variant="text"
+        fa={{
           icon: "fa-info",
           fixedWidth: true,
         }}

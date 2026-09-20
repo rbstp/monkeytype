@@ -101,7 +101,7 @@ A lesson map shows legends, state and best per lesson, plus a continue button. S
 
 Plumbing mirrors every SolidJS page: PageName union, solidPage, route, index.html container, mount key, nav button. nginx already serves any path. Starting a lesson is startLesson then navigate, since the test page restarts on show. Bests need a new progress field; the 100-attempt cap evicts them. The reviewer cut the intro modal, the mobile row and the keytip.
 
-First slice: page skeleton with a read-only map and a shared beginLesson action used by the page and the commandline.
+First slice, landed in `feat(trainer): add the trainer page with a lesson map and a shared begin action`: `/trainer` route, nav button, a "Trainer: open page" command, a lesson map with legends, state and a best derived from the stored attempts whose unlocked rows start the lesson, a continue button, and `beginLesson` in trainer/actions.ts shared with the commandline. Still to come: the picker modal, the attempts chart, the per-lesson table, and a per-lesson best field once commit C raises the attempt cap.
 
 Risk: commandline exec wipes a chained modal unless opensModal is set.
 
@@ -200,7 +200,7 @@ Now, the page and the signals everything reads:
 
 1. foundations A: session hardening with a session spec. Done in `fix(trainer): harden the lesson session against config changes`; covers foundation items 1 to 4 above.
 2. foundations B: resolve "default" to the real layout name. Done in `fix(trainer): resolve the default layout through the keymap layout`; covers foundation item 5 above.
-3. trainer-page: skeleton, lesson map, continue button, shared beginLesson action.
+3. trainer-page: skeleton, lesson map, continue button, shared beginLesson action. Done in `feat(trainer): add the trainer page with a lesson map and a shared begin action`.
 4. feedback-loop: the lesson chip on the test screen.
 5. trainer-settings: trainerUnlock and trainerWordsPerTest as Config keys.
 6. sample-model-v2: key stats v2 with migrate.
