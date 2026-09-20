@@ -26,6 +26,7 @@ import {
 } from "../../../../utils/strings";
 import { Kbd } from "../../../common/Kbd";
 import { AverageNotice } from "./AverageNotice";
+import { LessonNotice } from "./LessonNotice";
 import { Notice } from "./Notice";
 import { PbNotice } from "./PbNotice";
 
@@ -43,6 +44,7 @@ export function TestModesNotice() {
       <ResultSaving />
       <QuickRestart />
       <LongText />
+      <LessonNotice />
       <LoadedChallenge />
       <ZenMode />
       <Language />

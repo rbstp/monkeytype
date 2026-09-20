@@ -14,7 +14,7 @@ Strengths:
 
 Gaps:
 
-- Nothing on screen names the active lesson: session.ts:153-156 sets isLong false; the only renderer gates on it at TestModesNotice.tsx:122. Feedback is one toast at index.ts:51.
+- The chip at LessonNotice.tsx now names the active lesson, its best and the target on the test screen. Feedback beyond it is still one toast at index.ts:51.
 - The key EMA is not a speed: a 5000 ms error penalty at key-stats.ts:27,84-86, backspace and pause time charged to the next key at key-stats.ts:51-59, shift ignored at key-stats.ts:95-111. Panel and tips print it as ms.
 - Unlocks are one lucky test: canUnlock at lessons.ts:297-313 uses window 1 and test-level numbers; perKey from index.ts:47 is read nowhere.
 - Early lessons are gibberish: english.json has 3 home-row words, so with minReal 30 at lessons.ts:118 lessons 1-4 are mostly "afa sas dad" from lessons.ts:142-171. The pool is built once at session.ts:126-150.
@@ -61,7 +61,7 @@ A chip reads "lesson 3: r u · best 28 · target 30 / 97%". The result screen sa
 
 The chip is a Notice over the reactive getActiveLesson and progress signals; "trainer" joins the closed CommandlineListKey union. The card mounts beside the weak-keys panel and must read reactive progress, since recordAttempt is async. Celebration, daily goal and streak are out by decision 6.
 
-First slice: the chip alone, about 60 lines, no new state.
+First slice landed: the chip alone, a Notice over getActiveLesson and progress that opens /trainer, no new state. What remains is the result card with retry and next, build-order step 9.
 
 Risk: a second full-width panel crowds the result page.
 
@@ -201,7 +201,7 @@ Now, the page and the signals everything reads:
 1. foundations A: session hardening with a session spec. Done in `fix(trainer): harden the lesson session against config changes`; covers foundation items 1 to 4 above.
 2. foundations B: resolve "default" to the real layout name. Done in `fix(trainer): resolve the default layout through the keymap layout`; covers foundation item 5 above.
 3. trainer-page: skeleton, lesson map, continue button, shared beginLesson action. Done in `feat(trainer): add the trainer page with a lesson map and a shared begin action`.
-4. feedback-loop: the lesson chip on the test screen.
+4. feedback-loop: the lesson chip on the test screen. Done in `feat(trainer): show the active lesson as a chip on the test screen`.
 5. trainer-settings: trainerUnlock and trainerWordsPerTest as Config keys.
 6. sample-model-v2: key stats v2 with migrate.
 
@@ -235,4 +235,4 @@ Standing requirements, carry these into every step
 - No em dashes anywhere: code, comments, commit messages, PR title and body, docs, and the next prompt you write.
 - No code comments unless a line would be misread without one. When needed, one short line saying why, never what.
 - Before committing, spawn a subagent with model opus to review the full diff. Ask it to check correctness, any behaviour change when no lesson is active, missing test coverage, and violations of the two rules above. Fix what it finds. Do this even if the diff looks small.
-- Push the branch and open a PR against trainer. When the PR is merged, reply with the prompt for the next build-order step in docs/TRAINER_ROADMAP.md. That prompt must have the same shape as this one: context, work items with file:line refs verified against the current code, tests, validation, deliverable, and this Standing requirements block copied verbatim, including this instruction.
+- Push the branch and open a PR against trainer, subscribe to its activity and schedule an hourly check-in until it is merged or closed. When the PR is merged, write the prompt for the next build-order step in docs/TRAINER_ROADMAP.md with the same shape as this one: context, work items with file:line refs verified against the current trainer branch, tests, validation, deliverable, and this Standing requirements block copied verbatim, including this instruction. Post that prompt in your reply, then start it in this same session on a fresh branch from the updated trainer. Stop iterating once the PR for step 6 is merged, or when a step is blocked on a decision only the user can make; in both cases say so and stop. If a PR is closed without merging, stop and ask.
