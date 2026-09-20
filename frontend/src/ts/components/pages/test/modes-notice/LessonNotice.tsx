@@ -1,9 +1,10 @@
 import { createMemo } from "solid-js";
 
+import { getConfig } from "../../../../config/store";
 import { navigate } from "../../../../controllers/route-controller";
 import {
   bestWpm,
-  defaultCriteria,
+  criteriaFor,
   LESSONS,
   progress,
 } from "../../../../trainer/lessons";
@@ -19,7 +20,8 @@ export function LessonNotice() {
     const parts = [`lesson ${index + 1}: ${lesson.name}`];
     const best = bestWpm(progress().attempts, index);
     if (best !== undefined) parts.push(`best ${Math.round(best)}`);
-    parts.push(`target ${defaultCriteria.minWpm} / ${defaultCriteria.minAcc}%`);
+    const criteria = criteriaFor(getConfig.trainerUnlock);
+    parts.push(`target ${criteria.minWpm} / ${criteria.minAcc}%`);
     return parts.join(" · ");
   });
 

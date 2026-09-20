@@ -78,6 +78,8 @@ const obj: Config = {
   accountChart: ["on", "on", "on", "on"],
   minWpm: "off",
   minWpmCustomSpeed: 100,
+  trainerUnlock: "normal",
+  trainerWordsPerTest: 40,
   highlightMode: "letter",
   typedEffect: "keep",
   typingSpeedUnit: "wpm",

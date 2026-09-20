@@ -16,7 +16,7 @@ Gaps:
 
 - The chip at LessonNotice.tsx now names the active lesson, its best and the target on the test screen. Feedback beyond it is still one toast at index.ts:51.
 - The key EMA is not a speed: a 5000 ms error penalty at key-stats.ts:27,84-86, backspace and pause time charged to the next key at key-stats.ts:51-59, shift ignored at key-stats.ts:95-111. Panel and tips print it as ms.
-- Unlocks are one lucky test: canUnlock at lessons.ts:297-313 uses window 1 and test-level numbers; perKey from index.ts:47 is read nowhere.
+- Unlocks use test-level numbers: canUnlock in lessons.ts reads the bar from trainerUnlock through criteriaFor, and only strict asks for two passes in a row; perKey from index.ts is still read nowhere.
 - Early lessons are gibberish: english.json has 3 home-row words, so with minReal 30 at lessons.ts:118 lessons 1-4 are mostly "afa sas dad" from lessons.ts:142-171. The pool is built once at session.ts:126-150.
 - Layout is assumed qwerty: names hardcoded at lessons.ts:57-67, progress global at lessons.ts:257-262. "default" now resolves through keymapLayout in utils/layout-name.ts; commit C still owes per-layout progress.
 - Config leaks: lifecycle.ts:110-111 fires the finished event before the store is set, preset-controller.ts:46 saves lesson values to the account, session.ts:209-213 lets punctuation alter scored text.
@@ -171,7 +171,7 @@ Words per test and unlock strictness become real settings: searchable, preset-ab
 
 The config route is type-enforced and needs no backend code. Use the behavior group to avoid a preset checkbox. syncUnlocked runs before config loads, so move it behind the config event. The reviewer cut auto-tag, the file import UI and algorithm tunables.
 
-First slice: two keys, criteriaFor in lessons.ts, rebuild both images with monkeybuild.
+First slice landed: trainerUnlock and trainerWordsPerTest in the behavior group, criteriaFor in lessons.ts, syncUnlocked behind the config event, and the custom-text limit re-applied from the config event. Rebuild both images with monkeybuild before the config PATCH accepts the keys.
 
 Risk: changeRequiresRestart does not reapply the custom-text limit; re-apply it from a config event instead.
 
@@ -202,7 +202,7 @@ Now, the page and the signals everything reads:
 2. foundations B: resolve "default" to the real layout name. Done in `fix(trainer): resolve the default layout through the keymap layout`; covers foundation item 5 above.
 3. trainer-page: skeleton, lesson map, continue button, shared beginLesson action. Done in `feat(trainer): add the trainer page with a lesson map and a shared begin action`.
 4. feedback-loop: the lesson chip on the test screen. Done in `feat(trainer): show the active lesson as a chip on the test screen`.
-5. trainer-settings: trainerUnlock and trainerWordsPerTest as Config keys.
+5. trainer-settings: trainerUnlock and trainerWordsPerTest as Config keys. Done in `feat(trainer): add unlock strictness and words per test as config keys`.
 6. sample-model-v2: key stats v2 with migrate.
 
 Next, honest data and surfaces on it:

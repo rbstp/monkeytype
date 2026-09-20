@@ -360,6 +360,12 @@ export type PaceCaretCustomSpeed = z.infer<typeof PaceCaretCustomSpeedSchema>;
 export const MinWpmCustomSpeedSchema = z.number().nonnegative();
 export type MinWpmCustomSpeed = z.infer<typeof MinWpmCustomSpeedSchema>;
 
+export const TrainerUnlockSchema = z.enum(["relaxed", "normal", "strict"]);
+export type TrainerUnlock = z.infer<typeof TrainerUnlockSchema>;
+
+export const TrainerWordsPerTestSchema = z.number().int().min(10).max(200);
+export type TrainerWordsPerTest = z.infer<typeof TrainerWordsPerTestSchema>;
+
 export const MinimumAccuracyCustomSchema = z.number().nonnegative().max(100);
 export type MinimumAccuracyCustom = z.infer<typeof MinimumAccuracyCustomSchema>;
 
@@ -435,6 +441,8 @@ export const ConfigSchema = z
     funbox: FunboxSchema,
     customLayoutfluid: CustomLayoutFluidSchema,
     customPolyglot: CustomPolyglotSchema,
+    trainerUnlock: TrainerUnlockSchema,
+    trainerWordsPerTest: TrainerWordsPerTestSchema,
 
     // input
     freedomMode: z.boolean(),

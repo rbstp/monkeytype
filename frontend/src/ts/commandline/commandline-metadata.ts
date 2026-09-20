@@ -243,6 +243,16 @@ export const commandlineConfigMetadata: CommandlineConfigMetadataObject = {
       },
     },
   },
+  trainerUnlock: {
+    subgroup: {
+      options: "fromSchema",
+    },
+  },
+  trainerWordsPerTest: {
+    input: {
+      inputValueConvert: Number,
+    },
+  },
   minAcc: {
     display: "Minimum accuracy...",
     subgroup: {

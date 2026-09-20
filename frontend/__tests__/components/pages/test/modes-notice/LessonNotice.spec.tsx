@@ -3,6 +3,7 @@ import { createSignal } from "solid-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LessonNotice } from "../../../../../src/ts/components/pages/test/modes-notice/LessonNotice";
+import { setConfigStore } from "../../../../../src/ts/config/store";
 import * as RouteController from "../../../../../src/ts/controllers/route-controller";
 import * as Lessons from "../../../../../src/ts/trainer/lessons";
 import { Attempt, Progress } from "../../../../../src/ts/trainer/lessons";
@@ -35,6 +36,7 @@ describe("LessonNotice", () => {
     vi.spyOn(Lessons, "progress").mockImplementation(() => progress());
     setActiveLesson(null);
     setProgress({ version: 1, current: 0, unlocked: 0, attempts: [] });
+    setConfigStore("trainerUnlock", "normal");
   });
 
   it("renders nothing without an active lesson", () => {
@@ -61,6 +63,15 @@ describe("LessonNotice", () => {
     render(() => <LessonNotice />);
     expect(screen.getByRole("button")).toHaveTextContent(
       "lesson 3: r u · best 32 · target 30 / 97%",
+    );
+  });
+
+  it("reads the target from the unlock setting", () => {
+    setActiveLesson(2);
+    render(() => <LessonNotice />);
+    setConfigStore("trainerUnlock", "strict");
+    expect(screen.getByRole("button")).toHaveTextContent(
+      "lesson 3: r u · target 35 / 98%",
     );
   });
 

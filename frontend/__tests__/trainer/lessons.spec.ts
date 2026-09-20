@@ -7,6 +7,8 @@ import {
   buildLessonWords,
   canUnlock,
   countPerKey,
+  criteriaFor,
+  defaultCriteria,
   lessonChars,
   LESSONS,
 } from "../../src/ts/trainer/lessons";
@@ -170,6 +172,35 @@ describe("lessons", () => {
       expect(canUnlock([attempt({ acc: 96 })], 1)).toBe(false);
       expect(canUnlock([attempt({ wpm: 29 })], 1)).toBe(false);
       expect(canUnlock([attempt({ wpm: 30, acc: 97 })], 1)).toBe(true);
+    });
+
+    it("needs every attempt in the window to pass", () => {
+      const strict = criteriaFor("strict");
+      const pass = attempt({ wpm: 36, acc: 99 });
+      expect(canUnlock([pass], 1, strict)).toBe(false);
+      expect(canUnlock([pass, pass], 1, strict)).toBe(true);
+      expect(canUnlock([pass, attempt({ wpm: 34 }), pass], 1, strict)).toBe(
+        false,
+      );
+      expect(canUnlock([attempt({ wpm: 34 }), pass, pass], 1, strict)).toBe(
+        true,
+      );
+    });
+  });
+
+  describe("criteriaFor", () => {
+    it("maps the unlock setting to a bar", () => {
+      expect(criteriaFor("normal")).toBe(defaultCriteria);
+      expect(criteriaFor("relaxed")).toEqual({
+        minAcc: 95,
+        minWpm: 25,
+        window: 1,
+      });
+      expect(criteriaFor("strict")).toEqual({
+        minAcc: 98,
+        minWpm: 35,
+        window: 2,
+      });
     });
   });
 
