@@ -15,7 +15,6 @@ const targetAcc = 97;
 const hunting = 20;
 const lowConsistency = 60;
 const highAfkShare = 0.1;
-const slowKeyMs = 600;
 const minFingerSamples = 20;
 const maxTips = 3;
 
@@ -56,7 +55,7 @@ function accuracyTip(input: TipInput): string | undefined {
 
 function rhythmTip(input: TipInput): string | undefined {
   if (input.afkShare !== undefined && input.afkShare >= highAfkShare) {
-    return `${Math.round(input.afkShare * 100)}% of this test was idle. Staring at the keyboard teaches nothing — keep a slow, unbroken rhythm instead.`;
+    return `${Math.round(input.afkShare * 100)}% of this test was idle. Staring at the keyboard teaches nothing. Keep a slow, unbroken rhythm instead.`;
   }
   if (input.consistency !== undefined && input.consistency < lowConsistency) {
     return `Consistency ${Math.round(input.consistency)}%: your pace swings between the keys you know and the ones you search for. Hold one steady speed, even a slow one.`;
@@ -65,12 +64,19 @@ function rhythmTip(input: TipInput): string | undefined {
 }
 
 function keysTip(input: TipInput): string | undefined {
-  const slow = input.weakKeys
-    .filter((key) => key.ema >= slowKeyMs)
+  const errorProne = input.weakKeys
+    .filter((key) => key.label === "error-prone")
     .slice(0, 3)
-    .map((key) => `${key.legend} ${duration(key.ema)}`);
+    .map((key) => `${key.legend} ${Math.round(100 - accuracy(key))}% missed`);
+  const slow = input.weakKeys
+    .filter((key) => key.label === "slow")
+    .slice(0, 3)
+    .map((key) => `${key.legend} ${duration(key.emaMs)}`);
   const finger = weakestFinger(input.fingers);
   const parts: string[] = [];
+  if (errorProne.length > 0) {
+    parts.push(`Error-prone keys: ${errorProne.join(", ")}`);
+  }
   if (slow.length > 0) parts.push(`Slowest keys: ${slow.join(", ")}`);
   if (finger !== undefined) {
     parts.push(

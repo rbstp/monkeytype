@@ -15,12 +15,12 @@ Strengths:
 Gaps:
 
 - The chip at LessonNotice.tsx now names the active lesson, its best and the target on the test screen. Feedback beyond it is still one toast at index.ts:51.
-- The key EMA is not a speed: a 5000 ms error penalty at key-stats.ts:27,84-86, backspace and pause time charged to the next key at key-stats.ts:51-59, shift ignored at key-stats.ts:95-111. Panel and tips print it as ms.
+- Key stats v2 keeps speed apart from errors: emaMs takes only correct, non-recovery samples with pauses capped at three times the average, errRate is its own moving average, and deletes advance the clock. Shift is still folded into the base key in key-stats.ts. Panel and tips label keys slow or error-prone.
 - Unlocks use test-level numbers: canUnlock in lessons.ts reads the bar from trainerUnlock through criteriaFor, and only strict asks for two passes in a row; perKey from index.ts is still read nowhere.
 - Early lessons are gibberish: english.json has 3 home-row words, so with minReal 30 at lessons.ts:118 lessons 1-4 are mostly "afa sas dad" from lessons.ts:142-171. The pool is built once at session.ts:126-150.
 - Layout is assumed qwerty: names hardcoded at lessons.ts:57-67, progress global at lessons.ts:257-262. "default" now resolves through keymapLayout in utils/layout-name.ts; commit C still owes per-layout progress.
 - Config leaks: lifecycle.ts:110-111 fires the finished event before the store is set, preset-controller.ts:46 saves lesson values to the account, session.ts:209-213 lets punctuation alter scored text.
-- No escape hatch: no migrate at lessons.ts:315-319, a global 100-attempt cap at lessons.ts:265, a v1-literal backup replaced on import at backup.ts:5-9,30-36.
+- No escape hatch for progress: the progress store in lessons.ts passes no migrate and keeps a global 100-attempt cap. Key stats migrate v1 through the localStorage hook and backup.ts accepts v1 key stats on import.
 
 ## Expansion ideas
 
@@ -71,7 +71,7 @@ Weak keys stop being hijacked by a coffee break or a word's first letter. Keys a
 
 Sampler on input events only: advance the clock on deletes, flag recovery, cap spacing at three times the EMA, drop the penalty, track error rate separately. Backspace and shift have no keydown events, so the reviewer cut keydown pairing, hold time and per-key think time. Migrate v1 through the existing hook.
 
-First slice: one change in key-stats.ts splitting emaMs from errRate under version 2.
+First slice landed: key-stats.ts v2 splits emaMs from errRate, drops the penalty, advances the clock on deletes, flags recoveries and caps pauses; v1 migrates through the localStorage hook and on backup import. Shifted keys still share the base key's stat.
 
 Risk: splitting shifted keys thins samples; gate labels on counts.
 
@@ -186,12 +186,12 @@ Dropped by decision 2. Kept here for the record: stage one was a managed trainer
 3. session.ts:209-213 only rewrites the snapshot on watched keys; layout and language unwatched; altered text still scored.
 4. practise-words.ts:153-162 silently drops the lesson; the next restart reverts to lesson words.
 5. states/test.ts:185 and key-stats.ts:38 map "default" to qwerty. Resolved through keymapLayout in utils/layout-name.ts; per-layout progress remains for commit C.
-6. key-stats.ts:27,84-86 folds a 5000 ms penalty into a value shown as ms.
-7. key-stats.ts:51-59 skips deletes without advancing the clock; no pause cap.
+6. key-stats.ts:27,84-86 folds a 5000 ms penalty into a value shown as ms. Done in key stats v2.
+7. key-stats.ts:51-59 skips deletes without advancing the clock; no pause cap. Done in key stats v2.
 8. key-stats.ts:95-111 ignores sample.shifted.
 9. lessons.ts:297-313 canUnlock ignores perKey; lessons.spec.ts:156 locks this in.
 10. lessons.ts:265,355 cap attempts at 100 across all lessons.
-11. lessons.ts:315-319 and key-stats.ts:159-163 pass no migrate; backup.ts:5-9 is v1-literal and replaces on import.
+11. The progress store in lessons.ts passes no migrate; backup.ts is v1-literal for progress. Key stats and their backup entry migrate since key stats v2.
 12. lessons.ts:257-262 progress is global and attempts lack a layout field.
 
 ## Build order
@@ -203,7 +203,7 @@ Now, the page and the signals everything reads:
 3. trainer-page: skeleton, lesson map, continue button, shared beginLesson action. Done in `feat(trainer): add the trainer page with a lesson map and a shared begin action`.
 4. feedback-loop: the lesson chip on the test screen. Done in `feat(trainer): show the active lesson as a chip on the test screen`.
 5. trainer-settings: trainerUnlock and trainerWordsPerTest as Config keys. Done in `feat(trainer): add unlock strictness and words per test as config keys`.
-6. sample-model-v2: key stats v2 with migrate.
+6. sample-model-v2: key stats v2 with migrate. Done in `feat(trainer): split key speed from error rate in key stats v2`.
 
 Next, honest data and surfaces on it:
 
