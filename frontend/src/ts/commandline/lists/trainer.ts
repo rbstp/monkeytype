@@ -8,7 +8,12 @@ import * as TestLogic from "../../test/test-logic";
 import { beginLesson } from "../../trainer/actions";
 import { exportBackup, importBackup } from "../../trainer/backup";
 import { resetKeyStats } from "../../trainer/key-stats";
-import { LESSONS, progress, resetProgress } from "../../trainer/lessons";
+import {
+  currentLesson,
+  LESSONS,
+  resetProgress,
+  unlockedUpTo,
+} from "../../trainer/lessons";
 import { getActiveLesson, stopLesson } from "../../trainer/session";
 import { Command, CommandsSubgroup } from "../types";
 
@@ -17,7 +22,7 @@ const icon = "fa-graduation-cap";
 const notDuringTest = (): boolean => !isTestActive();
 
 function lessonDisplay(index: number): string {
-  const locked = progress().unlocked < index ? " (locked)" : "";
+  const locked = unlockedUpTo() < index ? " (locked)" : "";
   return `${index + 1}. ${LESSONS[index]?.name}${locked}`;
 }
 
@@ -45,15 +50,15 @@ const commands: Command[] = [
     alias: "typing tutor practice",
     icon,
     available: notDuringTest,
-    exec: (): void => void beginLesson(progress().current),
+    exec: (): void => void beginLesson(currentLesson()),
   },
   {
     id: "trainerNext",
     display: "Trainer: next lesson",
     icon,
     available: (): boolean =>
-      notDuringTest() && progress().unlocked > progress().current,
-    exec: (): void => void beginLesson(progress().current + 1),
+      notDuringTest() && unlockedUpTo() > currentLesson(),
+    exec: (): void => void beginLesson(currentLesson() + 1),
   },
   {
     id: "trainerOpen",

@@ -1,16 +1,29 @@
 import { readFileSync } from "fs";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LayoutObject } from "@monkeytype/schemas/layouts";
+import { setConfigStore } from "../../src/ts/config/store";
 import {
   Attempt,
-  bestWpm,
+  bestOf,
   buildLessonWords,
   canUnlock,
   countPerKey,
   criteriaFor,
+  currentLesson,
   defaultCriteria,
   lessonChars,
+  lessonIndex,
   LESSONS,
+  progress,
+  Progress,
+  ProgressV1,
+  recordAttempt,
+  replaceProgress,
+  resetProgress,
+  setCurrentLesson,
+  trimAttempts,
+  unlockedUpTo,
+  upgradeProgress,
 } from "../../src/ts/trainer/lessons";
 
 const qwerty = JSON.parse(
@@ -34,6 +47,37 @@ const punctuation = LESSONS.findIndex(
 );
 
 describe("lessons", () => {
+  describe("ids", () => {
+    it("are unique and stable", () => {
+      const ids = LESSONS.map((lesson) => lesson.id);
+      expect(new Set(ids).size).toBe(ids.length);
+      expect(ids).toEqual([
+        "home-row",
+        "e-i",
+        "r-u",
+        "t-y",
+        "g-h",
+        "w-o",
+        "q-p",
+        "v-m",
+        "c-comma",
+        "b-n",
+        "x-period",
+        "z-slash",
+        "capitals",
+        "punctuation",
+        "numbers",
+      ]);
+      for (const id of ids) expect(/^[a-z]+(-[a-z]+)*$/.test(id)).toBe(true);
+    });
+
+    it("resolves an id back to its index", () => {
+      expect(lessonIndex("home-row")).toBe(0);
+      expect(lessonIndex("capitals")).toBe(capitals);
+      expect(lessonIndex("missing")).toBe(-1);
+    });
+  });
+
   describe("lessonChars", () => {
     it("accumulates keys across lessons", () => {
       expect(lessonChars(0, qwerty)).toEqual({
@@ -114,7 +158,7 @@ describe("lessons", () => {
             { keycode: "KeyE", shifted: false, correct: false },
             { keycode: "KeyA", shifted: false, correct: true },
           ],
-          { name: "e i", newKeys: ["KeyE", "KeyI"] },
+          { id: "e-i", name: "e i", newKeys: ["KeyE", "KeyI"] },
         ),
       ).toEqual({ KeyE: { total: 2, errors: 1 } });
     });
@@ -126,7 +170,7 @@ describe("lessons", () => {
             { keycode: "KeyE", shifted: false, correct: true },
             { keycode: "KeyE", shifted: true, correct: true },
           ],
-          { name: "capitals", newKeys: ["KeyE"], layer: 1 },
+          { id: "capitals", name: "capitals", newKeys: ["KeyE"], layer: 1 },
         ),
       ).toEqual({ KeyE: { total: 1, errors: 0 } });
     });
@@ -134,7 +178,8 @@ describe("lessons", () => {
 
   describe("canUnlock", () => {
     const attempt = (overrides: Partial<Attempt> = {}): Attempt => ({
-      lesson: 1,
+      lesson: "e-i",
+      layout: "qwerty",
       wpm: 35,
       acc: 98,
       perKey: {
@@ -144,47 +189,49 @@ describe("lessons", () => {
       ts: 0,
       ...overrides,
     });
+    const unlocks = (
+      attempts: Attempt[],
+      criteria = defaultCriteria,
+    ): boolean => canUnlock(attempts, "e-i", "qwerty", criteria);
 
     it("unlocks on a single passing attempt", () => {
-      expect(canUnlock([], 1)).toBe(false);
-      expect(canUnlock([attempt()], 1)).toBe(true);
+      expect(unlocks([])).toBe(false);
+      expect(unlocks([attempt()])).toBe(true);
     });
 
-    it("only looks at the most recent attempt of that lesson", () => {
-      expect(canUnlock([attempt({ acc: 80 }), attempt()], 1)).toBe(true);
-      expect(canUnlock([attempt(), attempt({ wpm: 20 })], 1)).toBe(false);
-      expect(canUnlock([attempt(), attempt({ lesson: 0 })], 1)).toBe(true);
+    it("only looks at the most recent attempt of that lesson and layout", () => {
+      expect(unlocks([attempt({ acc: 80 }), attempt()])).toBe(true);
+      expect(unlocks([attempt(), attempt({ wpm: 20 })])).toBe(false);
+      expect(unlocks([attempt(), attempt({ lesson: "home-row" })])).toBe(true);
+      expect(unlocks([attempt(), attempt({ layout: "dvorak" })])).toBe(true);
+      expect(unlocks([attempt({ layout: "dvorak" })])).toBe(false);
     });
 
     it("ignores per-key accuracy", () => {
       expect(
-        canUnlock([attempt({ perKey: { KeyE: { total: 2, errors: 2 } } })], 1),
+        unlocks([attempt({ perKey: { KeyE: { total: 2, errors: 2 } } })]),
       ).toBe(true);
     });
 
     it("compares the values shown on the result screen", () => {
-      expect(canUnlock([attempt({ wpm: 29.6, acc: 97.4 })], 1)).toBe(true);
-      expect(canUnlock([attempt({ wpm: 29.4 })], 1)).toBe(false);
-      expect(canUnlock([attempt({ acc: 96.9 })], 1)).toBe(false);
+      expect(unlocks([attempt({ wpm: 29.6, acc: 97.4 })])).toBe(true);
+      expect(unlocks([attempt({ wpm: 29.4 })])).toBe(false);
+      expect(unlocks([attempt({ acc: 96.9 })])).toBe(false);
     });
 
     it("needs both wpm and accuracy", () => {
-      expect(canUnlock([attempt({ acc: 96 })], 1)).toBe(false);
-      expect(canUnlock([attempt({ wpm: 29 })], 1)).toBe(false);
-      expect(canUnlock([attempt({ wpm: 30, acc: 97 })], 1)).toBe(true);
+      expect(unlocks([attempt({ acc: 96 })])).toBe(false);
+      expect(unlocks([attempt({ wpm: 29 })])).toBe(false);
+      expect(unlocks([attempt({ wpm: 30, acc: 97 })])).toBe(true);
     });
 
     it("needs every attempt in the window to pass", () => {
       const strict = criteriaFor("strict");
       const pass = attempt({ wpm: 36, acc: 99 });
-      expect(canUnlock([pass], 1, strict)).toBe(false);
-      expect(canUnlock([pass, pass], 1, strict)).toBe(true);
-      expect(canUnlock([pass, attempt({ wpm: 34 }), pass], 1, strict)).toBe(
-        false,
-      );
-      expect(canUnlock([attempt({ wpm: 34 }), pass, pass], 1, strict)).toBe(
-        true,
-      );
+      expect(unlocks([pass], strict)).toBe(false);
+      expect(unlocks([pass, pass], strict)).toBe(true);
+      expect(unlocks([pass, attempt({ wpm: 34 }), pass], strict)).toBe(false);
+      expect(unlocks([attempt({ wpm: 34 }), pass, pass], strict)).toBe(true);
     });
   });
 
@@ -204,28 +251,231 @@ describe("lessons", () => {
     });
   });
 
-  describe("bestWpm", () => {
-    const at = (lesson: number, wpm: number): Attempt => ({
+  describe("upgradeProgress", () => {
+    const v1Attempt = (
+      lesson: number,
+      wpm: number,
+    ): ProgressV1["attempts"][0] => ({
       lesson,
       wpm,
-      acc: 100,
-      perKey: {},
-      ts: 0,
+      acc: 98,
+      perKey: { KeyE: { total: 3, errors: 1 } },
+      ts: lesson,
     });
 
-    it("returns the highest wpm among that lesson's attempts", () => {
-      const attempts = [at(1, 25), at(2, 60), at(1, 31.4), at(1, 31.4)];
-      expect(bestWpm(attempts, 1)).toBe(31.4);
-      expect(bestWpm(attempts, 2)).toBe(60);
+    it("moves indices to ids under the qwerty layout and derives best", () => {
+      const upgraded = upgradeProgress({
+        version: 1,
+        current: 2,
+        unlocked: 3,
+        attempts: [v1Attempt(1, 25), v1Attempt(2, 60), v1Attempt(1, 31.4)],
+      });
+      expect(upgraded).toEqual({
+        version: 2,
+        layouts: {
+          qwerty: {
+            current: 2,
+            unlocked: 3,
+            best: { "e-i": 31.4, "r-u": 60 },
+          },
+        },
+        attempts: [
+          { ...v1Attempt(1, 25), lesson: "e-i", layout: "qwerty" },
+          { ...v1Attempt(2, 60), lesson: "r-u", layout: "qwerty" },
+          { ...v1Attempt(1, 31.4), lesson: "e-i", layout: "qwerty" },
+        ],
+      });
+    });
+
+    it("drops attempts whose index has no lesson", () => {
+      const upgraded = upgradeProgress({
+        version: 1,
+        current: 0,
+        unlocked: 0,
+        attempts: [v1Attempt(LESSONS.length, 40), v1Attempt(0, 20)],
+      });
+      expect(upgraded.attempts.map((attempt) => attempt.lesson)).toEqual([
+        "home-row",
+      ]);
+      expect(upgraded.layouts["qwerty"]?.best).toEqual({ "home-row": 20 });
     });
 
     it("keeps a zero wpm attempt as a best", () => {
-      expect(bestWpm([at(0, 0)], 0)).toBe(0);
+      expect(
+        upgradeProgress({
+          version: 1,
+          current: 0,
+          unlocked: 0,
+          attempts: [v1Attempt(0, 0)],
+        }).layouts["qwerty"]?.best,
+      ).toEqual({ "home-row": 0 });
+    });
+  });
+
+  describe("trimAttempts", () => {
+    const at = (lesson: string, layout: string, ts: number): Attempt => ({
+      lesson,
+      layout,
+      wpm: ts,
+      acc: 100,
+      perKey: {},
+      ts,
     });
 
-    it("is undefined for a lesson without attempts", () => {
-      expect(bestWpm([at(1, 25)], 0)).toBeUndefined();
-      expect(bestWpm([], 0)).toBeUndefined();
+    it("keeps the newest 50 per lesson and layout", () => {
+      const attempts: Attempt[] = [];
+      for (let ts = 0; ts < 60; ts++) {
+        attempts.push(at("e-i", "qwerty", ts));
+        attempts.push(at("e-i", "dvorak", ts));
+        attempts.push(at("r-u", "qwerty", ts));
+      }
+      const kept = trimAttempts(attempts);
+      expect(kept).toHaveLength(150);
+      const group = (lesson: string, layout: string): number[] =>
+        kept
+          .filter((a) => a.lesson === lesson && a.layout === layout)
+          .map((a) => a.ts);
+      expect(group("e-i", "qwerty")).toEqual(
+        Array.from({ length: 50 }, (_, i) => i + 10),
+      );
+      expect(group("e-i", "dvorak")).toHaveLength(50);
+      expect(group("r-u", "qwerty")).toHaveLength(50);
+      expect(kept.map((a) => a.ts)).toEqual(
+        [...kept.map((a) => a.ts)].sort((a, b) => a - b),
+      );
+    });
+
+    it("caps the total at 1000 newest attempts", () => {
+      const attempts: Attempt[] = [];
+      for (let lesson = 0; lesson < 15; lesson++) {
+        for (let ts = 0; ts < 50; ts++) {
+          attempts.push(at(`l${lesson}`, "qwerty", lesson * 50 + ts));
+          attempts.push(at(`l${lesson}`, "dvorak", lesson * 50 + ts));
+        }
+      }
+      expect(attempts).toHaveLength(1500);
+      const kept = trimAttempts(attempts);
+      expect(kept).toHaveLength(1000);
+      expect(kept[0]?.ts).toBe(250);
+    });
+
+    it("leaves a short list untouched", () => {
+      const attempts = [at("e-i", "qwerty", 1), at("e-i", "qwerty", 2)];
+      expect(trimAttempts(attempts)).toEqual(attempts);
+    });
+  });
+
+  describe("progress store", () => {
+    const attempt = (
+      lesson: string,
+      layout: string,
+      wpm: number,
+      acc = 100,
+    ): Attempt => ({ lesson, layout, wpm, acc, perKey: {}, ts: 0 });
+
+    beforeEach(() => {
+      setConfigStore("layout", "default");
+      setConfigStore("keymapLayout", "overrideSync");
+      resetProgress();
+    });
+
+    it("keeps current, unlocked and best per layout", () => {
+      setCurrentLesson(2);
+      expect(recordAttempt(attempt("home-row", "qwerty", 40))).toBe(true);
+      expect(currentLesson()).toBe(2);
+      expect(unlockedUpTo()).toBe(1);
+      expect(bestOf("home-row")).toBe(40);
+
+      setConfigStore("layout", "dvorak");
+      expect(currentLesson()).toBe(0);
+      expect(unlockedUpTo()).toBe(0);
+      expect(bestOf("home-row")).toBeUndefined();
+
+      expect(recordAttempt(attempt("home-row", "dvorak", 33))).toBe(true);
+      expect(unlockedUpTo()).toBe(1);
+      expect(bestOf("home-row")).toBe(33);
+      expect(progress().layouts["qwerty"]?.best).toEqual({ "home-row": 40 });
+    });
+
+    it("resolves the default layout through the keymap layout", () => {
+      setConfigStore("keymapLayout", "canadian_french");
+      expect(recordAttempt(attempt("home-row", "canadian_french", 40))).toBe(
+        true,
+      );
+      expect(unlockedUpTo()).toBe(1);
+      expect(progress().layouts["qwerty"]).toBeUndefined();
+    });
+
+    it("writes best from the attempt and keeps it after trimming", () => {
+      expect(recordAttempt(attempt("home-row", "qwerty", 55, 90))).toBe(false);
+      expect(bestOf("home-row")).toBe(55);
+      for (let i = 0; i < 60; i++) {
+        recordAttempt(attempt("home-row", "qwerty", 20, 90));
+      }
+      expect(progress().attempts).toHaveLength(50);
+      expect(progress().attempts.every((a) => a.wpm === 20)).toBe(true);
+      expect(bestOf("home-row")).toBe(55);
+    });
+
+    it("refuses an attempt for an unknown lesson", () => {
+      expect(recordAttempt(attempt("missing", "qwerty", 55))).toBe(false);
+      expect(progress().attempts).toHaveLength(0);
+    });
+
+    describe("storage", () => {
+      afterEach(() => {
+        localStorage.removeItem("trainerProgress");
+        vi.resetModules();
+      });
+
+      it("upgrades a stored v1 blob on load and writes it back", async () => {
+        localStorage.setItem(
+          "trainerProgress",
+          JSON.stringify({
+            version: 1,
+            current: 2,
+            unlocked: 3,
+            attempts: [
+              { lesson: 1, wpm: 28, acc: 97, perKey: {}, ts: 1 },
+              { lesson: 40, wpm: 28, acc: 97, perKey: {}, ts: 2 },
+            ],
+          }),
+        );
+        vi.resetModules();
+        const fresh = await import("../../src/ts/trainer/lessons");
+        expect(fresh.progress()).toEqual({
+          version: 2,
+          layouts: { qwerty: { current: 2, unlocked: 3, best: { "e-i": 28 } } },
+          attempts: [
+            {
+              lesson: "e-i",
+              layout: "qwerty",
+              wpm: 28,
+              acc: 97,
+              perKey: {},
+              ts: 1,
+            },
+          ],
+        });
+        expect(
+          JSON.parse(localStorage.getItem("trainerProgress") ?? "{}").version,
+        ).toBe(2);
+      });
+    });
+
+    it("re-evaluates unlocks per layout on replace", () => {
+      const data: Progress = {
+        version: 2,
+        layouts: {},
+        attempts: [
+          attempt("home-row", "qwerty", 40),
+          attempt("e-i", "qwerty", 40),
+          attempt("home-row", "dvorak", 40),
+        ],
+      };
+      replaceProgress(data);
+      expect(progress().layouts["qwerty"]?.unlocked).toBe(2);
+      expect(progress().layouts["dvorak"]?.unlocked).toBe(1);
     });
   });
 });

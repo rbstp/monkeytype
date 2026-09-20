@@ -5,8 +5,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LessonNotice } from "../../../../../src/ts/components/pages/test/modes-notice/LessonNotice";
 import { setConfigStore } from "../../../../../src/ts/config/store";
 import * as RouteController from "../../../../../src/ts/controllers/route-controller";
-import * as Lessons from "../../../../../src/ts/trainer/lessons";
-import { Attempt, Progress } from "../../../../../src/ts/trainer/lessons";
+import {
+  LESSONS,
+  Progress,
+  recordAttempt,
+  replaceProgress,
+  resetProgress,
+} from "../../../../../src/ts/trainer/lessons";
 import * as Session from "../../../../../src/ts/trainer/session";
 
 vi.mock("../../../../../src/ts/controllers/route-controller", () => ({
@@ -16,27 +21,22 @@ vi.mock("../../../../../src/ts/trainer/session", () => ({
   getActiveLesson: vi.fn(),
 }));
 
-function attempt(lesson: number, wpm: number): Attempt {
-  return { lesson, wpm, acc: 98, perKey: {}, ts: 1 };
+function stored(layouts: Progress["layouts"]): Progress {
+  return { version: 2, layouts, attempts: [] };
 }
 
 describe("LessonNotice", () => {
   const [activeLesson, setActiveLesson] = createSignal<number | null>(null);
-  const [progress, setProgress] = createSignal<Progress>({
-    version: 1,
-    current: 0,
-    unlocked: 0,
-    attempts: [],
-  });
   const navigateMock = vi.mocked(RouteController.navigate);
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(Session.getActiveLesson).mockImplementation(() => activeLesson());
-    vi.spyOn(Lessons, "progress").mockImplementation(() => progress());
     setActiveLesson(null);
-    setProgress({ version: 1, current: 0, unlocked: 0, attempts: [] });
+    resetProgress();
     setConfigStore("trainerUnlock", "normal");
+    setConfigStore("layout", "default");
+    setConfigStore("keymapLayout", "overrideSync");
   });
 
   it("renders nothing without an active lesson", () => {
@@ -54,16 +54,31 @@ describe("LessonNotice", () => {
 
   it("reads best from the active lesson only", () => {
     setActiveLesson(2);
-    setProgress({
-      version: 1,
-      current: 2,
-      unlocked: 2,
-      attempts: [attempt(1, 55), attempt(2, 27.4), attempt(2, 31.6)],
-    });
+    replaceProgress(
+      stored({
+        qwerty: { current: 2, unlocked: 2, best: { "e-i": 55, "r-u": 31.6 } },
+      }),
+    );
     render(() => <LessonNotice />);
     expect(screen.getByRole("button")).toHaveTextContent(
       "lesson 3: r u · best 32 · target 30 / 97%",
     );
+  });
+
+  it("reads best from the active layout only", () => {
+    setActiveLesson(2);
+    replaceProgress(
+      stored({
+        qwerty: { current: 2, unlocked: 2, best: { "r-u": 31.6 } },
+        dvorak: { current: 2, unlocked: 2, best: { "r-u": 45 } },
+      }),
+    );
+    render(() => <LessonNotice />);
+    expect(screen.getByRole("button")).toHaveTextContent("best 32");
+    setConfigStore("layout", "dvorak");
+    expect(screen.getByRole("button")).toHaveTextContent("best 45");
+    setConfigStore("layout", "colemak");
+    expect(screen.getByRole("button")).not.toHaveTextContent("best");
   });
 
   it("reads the target from the unlock setting", () => {
@@ -79,11 +94,13 @@ describe("LessonNotice", () => {
     setActiveLesson(2);
     render(() => <LessonNotice />);
     expect(screen.getByRole("button")).not.toHaveTextContent("best");
-    setProgress({
-      version: 1,
-      current: 2,
-      unlocked: 2,
-      attempts: [attempt(2, 29)],
+    recordAttempt({
+      lesson: "r-u",
+      layout: "qwerty",
+      wpm: 29,
+      acc: 98,
+      perKey: {},
+      ts: 1,
     });
     expect(screen.getByRole("button")).toHaveTextContent("best 29");
   });
@@ -106,7 +123,7 @@ describe("LessonNotice", () => {
   });
 
   it("renders nothing for a stored index beyond the lesson list", () => {
-    setActiveLesson(Lessons.LESSONS.length);
+    setActiveLesson(LESSONS.length);
     const { container } = render(() => <LessonNotice />);
     expect(container).toBeEmptyDOMElement();
   });

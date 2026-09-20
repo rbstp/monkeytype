@@ -1,14 +1,16 @@
 import { z } from "zod";
 import { TrainerUnlock } from "@monkeytype/schemas/configs";
 import { LayoutObject } from "@monkeytype/schemas/layouts";
-import { Config } from "../config/store";
+import { Config, getConfig } from "../config/store";
 import { Keycode } from "../constants/keys";
 import { configEvent } from "../events/config";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { keycodeToLayoutKey } from "../utils/key-converter";
+import { resolveLayoutName } from "../utils/layout-name";
 import { KeySample } from "./key-stats";
 
 export type Lesson = {
+  id: string;
   name: string;
   newKeys: Keycode[];
   layer?: 0 | 1;
@@ -45,6 +47,7 @@ const letterKeys: Keycode[] = [
 
 export const LESSONS: Lesson[] = [
   {
+    id: "home-row",
     name: "home row",
     newKeys: [
       "KeyA",
@@ -57,23 +60,25 @@ export const LESSONS: Lesson[] = [
       "Semicolon",
     ],
   },
-  { name: "e i", newKeys: ["KeyE", "KeyI"] },
-  { name: "r u", newKeys: ["KeyR", "KeyU"] },
-  { name: "t y", newKeys: ["KeyT", "KeyY"] },
-  { name: "g h", newKeys: ["KeyG", "KeyH"] },
-  { name: "w o", newKeys: ["KeyW", "KeyO"] },
-  { name: "q p", newKeys: ["KeyQ", "KeyP"] },
-  { name: "v m", newKeys: ["KeyV", "KeyM"] },
-  { name: "c ,", newKeys: ["KeyC", "Comma"] },
-  { name: "b n", newKeys: ["KeyB", "KeyN"] },
-  { name: "x .", newKeys: ["KeyX", "Period"] },
-  { name: "z /", newKeys: ["KeyZ", "Slash"] },
-  { name: "capitals", newKeys: letterKeys, layer: 1 },
+  { id: "e-i", name: "e i", newKeys: ["KeyE", "KeyI"] },
+  { id: "r-u", name: "r u", newKeys: ["KeyR", "KeyU"] },
+  { id: "t-y", name: "t y", newKeys: ["KeyT", "KeyY"] },
+  { id: "g-h", name: "g h", newKeys: ["KeyG", "KeyH"] },
+  { id: "w-o", name: "w o", newKeys: ["KeyW", "KeyO"] },
+  { id: "q-p", name: "q p", newKeys: ["KeyQ", "KeyP"] },
+  { id: "v-m", name: "v m", newKeys: ["KeyV", "KeyM"] },
+  { id: "c-comma", name: "c ,", newKeys: ["KeyC", "Comma"] },
+  { id: "b-n", name: "b n", newKeys: ["KeyB", "KeyN"] },
+  { id: "x-period", name: "x .", newKeys: ["KeyX", "Period"] },
+  { id: "z-slash", name: "z /", newKeys: ["KeyZ", "Slash"] },
+  { id: "capitals", name: "capitals", newKeys: letterKeys, layer: 1 },
   {
+    id: "punctuation",
     name: "punctuation",
     newKeys: ["Quote", "Minus", "Equal", "BracketLeft", "BracketRight"],
   },
   {
+    id: "numbers",
     name: "numbers",
     newKeys: [
       "Digit1",
@@ -89,6 +94,10 @@ export const LESSONS: Lesson[] = [
     ],
   },
 ];
+
+export function lessonIndex(id: string): number {
+  return LESSONS.findIndex((lesson) => lesson.id === id);
+}
 
 export type LessonChars = { allowed: string[]; fresh: string[] };
 
@@ -259,7 +268,8 @@ const KeyCountSchema = z.object({
 export type KeyCount = z.infer<typeof KeyCountSchema>;
 
 const AttemptSchema = z.object({
-  lesson: z.number().int().nonnegative(),
+  lesson: z.string(),
+  layout: z.string(),
   wpm: z.number().nonnegative(),
   acc: z.number().nonnegative(),
   perKey: z.record(z.string(), KeyCountSchema),
@@ -267,15 +277,50 @@ const AttemptSchema = z.object({
 });
 export type Attempt = z.infer<typeof AttemptSchema>;
 
-export const ProgressSchema = z.object({
-  version: z.literal(1),
+const LayoutProgressSchema = z.object({
   current: z.number().int().nonnegative(),
   unlocked: z.number().int().nonnegative(),
+  best: z.record(z.string(), z.number().nonnegative()),
+});
+export type LayoutProgress = z.infer<typeof LayoutProgressSchema>;
+
+export const ProgressSchema = z.object({
+  version: z.literal(2),
+  layouts: z.record(z.string(), LayoutProgressSchema),
   attempts: z.array(AttemptSchema),
 });
 export type Progress = z.infer<typeof ProgressSchema>;
 
-const maxAttempts = 100;
+export const ProgressV1Schema = z.object({
+  version: z.literal(1),
+  current: z.number().int().nonnegative(),
+  unlocked: z.number().int().nonnegative(),
+  attempts: z.array(
+    z.object({
+      lesson: z.number().int().nonnegative(),
+      wpm: z.number().nonnegative(),
+      acc: z.number().nonnegative(),
+      perKey: z.record(z.string(), KeyCountSchema),
+      ts: z.number().nonnegative(),
+    }),
+  ),
+});
+export type ProgressV1 = z.infer<typeof ProgressV1Schema>;
+
+const maxAttempts = 1000;
+const maxAttemptsPerLesson = 50;
+const v1Layout = "qwerty";
+
+const emptyLayoutProgress = (): LayoutProgress => ({
+  current: 0,
+  unlocked: 0,
+  best: {},
+});
+const emptyProgress = (): Progress => ({
+  version: 2,
+  layouts: {},
+  attempts: [],
+});
 
 export type UnlockCriteria = {
   minAcc: number;
@@ -317,25 +362,67 @@ export function countPerKey(
   return counts;
 }
 
-export function bestWpm(
+function bestByLesson(
   attempts: Attempt[],
-  lesson: number,
-): number | undefined {
-  let best: number | undefined;
+  layout: string,
+): Record<string, number> {
+  const best: Record<string, number> = {};
   for (const attempt of attempts) {
-    if (attempt.lesson !== lesson) continue;
-    if (best === undefined || attempt.wpm > best) best = attempt.wpm;
+    if (attempt.layout !== layout) continue;
+    const known = best[attempt.lesson];
+    if (known === undefined || attempt.wpm > known) {
+      best[attempt.lesson] = attempt.wpm;
+    }
   }
   return best;
 }
 
+export function upgradeProgress(v1: ProgressV1): Progress {
+  const attempts: Attempt[] = [];
+  for (const { lesson, ...rest } of v1.attempts) {
+    const id = LESSONS[lesson]?.id;
+    if (id === undefined) continue;
+    attempts.push({ ...rest, lesson: id, layout: v1Layout });
+  }
+  return {
+    version: 2,
+    layouts: {
+      [v1Layout]: {
+        current: v1.current,
+        unlocked: v1.unlocked,
+        best: bestByLesson(attempts, v1Layout),
+      },
+    },
+    attempts,
+  };
+}
+
+/**
+ * Keeps the newest attempts: at most 50 per lesson and layout, 1000 overall.
+ */
+export function trimAttempts(attempts: Attempt[]): Attempt[] {
+  const seen = new Map<string, number>();
+  const kept: Attempt[] = [];
+  for (let i = attempts.length - 1; i >= 0; i--) {
+    const attempt = attempts[i] as Attempt;
+    const group = `${attempt.layout} ${attempt.lesson}`;
+    const count = seen.get(group) ?? 0;
+    if (count >= maxAttemptsPerLesson) continue;
+    seen.set(group, count + 1);
+    kept.push(attempt);
+    if (kept.length >= maxAttempts) break;
+  }
+  return kept.reverse();
+}
+
 export function canUnlock(
   attempts: Attempt[],
-  lesson: number,
+  lesson: string,
+  layout: string,
   criteria: UnlockCriteria = defaultCriteria,
 ): boolean {
   const recent = attempts
-    .filter((attempt) => attempt.lesson === lesson)
+    .filter((attempt) => attempt.lesson === lesson && attempt.layout === layout)
     .slice(-criteria.window);
   if (recent.length < criteria.window) return false;
   // compare the values the result screen shows, so a displayed 30 wpm / 97%
@@ -350,10 +437,62 @@ export function canUnlock(
 const [progress, setProgress] = useLocalStorage<Progress>({
   key: "trainerProgress",
   schema: ProgressSchema,
-  fallback: { version: 1, current: 0, unlocked: 0, attempts: [] },
+  fallback: emptyProgress(),
+  migrate: (value) => {
+    const v1 = ProgressV1Schema.safeParse(value);
+    return v1.success ? upgradeProgress(v1.data) : emptyProgress();
+  },
 });
 
 export { progress };
+
+export function progressLayout(): string {
+  return resolveLayoutName(getConfig.layout, getConfig.keymapLayout);
+}
+
+function layoutEntry(layout: string): LayoutProgress {
+  return progress().layouts[layout] ?? emptyLayoutProgress();
+}
+
+export function currentLesson(): number {
+  return layoutEntry(progressLayout()).current;
+}
+
+export function unlockedUpTo(): number {
+  return layoutEntry(progressLayout()).unlocked;
+}
+
+export function bestOf(id: string): number | undefined {
+  return layoutEntry(progressLayout()).best[id];
+}
+
+function updateLayout(
+  current: Progress,
+  layout: string,
+  update: (entry: LayoutProgress) => LayoutProgress,
+): Progress {
+  const entry = current.layouts[layout] ?? emptyLayoutProgress();
+  const next = update(entry);
+  return next === entry
+    ? current
+    : { ...current, layouts: { ...current.layouts, [layout]: next } };
+}
+
+function unlockedAfterSync(
+  attempts: Attempt[],
+  layout: string,
+  unlocked: number,
+  criteria: UnlockCriteria,
+): number {
+  let next = unlocked;
+  while (
+    next + 1 < LESSONS.length &&
+    canUnlock(attempts, (LESSONS[next] as Lesson).id, layout, criteria)
+  ) {
+    next++;
+  }
+  return next;
+}
 
 /**
  * Re-evaluates the stored attempts against the current criteria, so a change to
@@ -363,14 +502,23 @@ export { progress };
 function syncUnlocked(): void {
   const criteria = criteriaFor(Config.trainerUnlock);
   setProgress((current) => {
-    let unlocked = current.unlocked;
-    while (
-      unlocked + 1 < LESSONS.length &&
-      canUnlock(current.attempts, unlocked, criteria)
-    ) {
-      unlocked++;
+    const layouts = new Set([
+      ...Object.keys(current.layouts),
+      ...current.attempts.map((attempt) => attempt.layout),
+    ]);
+    let next = current;
+    for (const layout of layouts) {
+      next = updateLayout(next, layout, (entry) => {
+        const unlocked = unlockedAfterSync(
+          current.attempts,
+          layout,
+          entry.unlocked,
+          criteria,
+        );
+        return unlocked === entry.unlocked ? entry : { ...entry, unlocked };
+      });
     }
-    return unlocked === current.unlocked ? current : { ...current, unlocked };
+    return next;
   });
 }
 
@@ -381,7 +529,11 @@ configEvent.subscribe(({ key }) => {
 });
 
 export function setCurrentLesson(index: number): void {
-  setProgress((current) => ({ ...current, current: index }));
+  setProgress((current) =>
+    updateLayout(current, progressLayout(), (entry) =>
+      entry.current === index ? entry : { ...entry, current: index },
+    ),
+  );
 }
 
 /**
@@ -389,26 +541,39 @@ export function setCurrentLesson(index: number): void {
  * @returns true when a new lesson was unlocked
  */
 export function recordAttempt(attempt: Attempt): boolean {
-  if (LESSONS[attempt.lesson] === undefined) return false;
+  const index = lessonIndex(attempt.lesson);
+  if (index === -1) return false;
   let unlockedNow = false;
   setProgress((current) => {
-    const attempts = [...current.attempts, attempt].slice(-maxAttempts);
-    const next = attempt.lesson + 1;
-    unlockedNow =
-      next < LESSONS.length &&
-      current.unlocked < next &&
-      canUnlock(attempts, attempt.lesson, criteriaFor(Config.trainerUnlock));
-    return {
-      ...current,
-      attempts,
-      unlocked: unlockedNow ? next : current.unlocked,
-    };
+    const attempts = trimAttempts([...current.attempts, attempt]);
+    const next = index + 1;
+    return updateLayout({ ...current, attempts }, attempt.layout, (entry) => {
+      unlockedNow =
+        next < LESSONS.length &&
+        entry.unlocked < next &&
+        canUnlock(
+          attempts,
+          attempt.lesson,
+          attempt.layout,
+          criteriaFor(Config.trainerUnlock),
+        );
+      const known = entry.best[attempt.lesson];
+      return {
+        ...entry,
+        unlocked: unlockedNow ? next : entry.unlocked,
+        best: {
+          ...entry.best,
+          [attempt.lesson]:
+            known === undefined ? attempt.wpm : Math.max(known, attempt.wpm),
+        },
+      };
+    });
   });
   return unlockedNow;
 }
 
 export function resetProgress(): void {
-  setProgress({ version: 1, current: 0, unlocked: 0, attempts: [] });
+  setProgress(emptyProgress());
 }
 
 export function replaceProgress(data: Progress): void {

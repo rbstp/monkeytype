@@ -5,7 +5,11 @@ import {
   parseBackup,
 } from "../../src/ts/trainer/backup";
 import { getKeyStats, recordSamples } from "../../src/ts/trainer/key-stats";
-import { progress, setCurrentLesson } from "../../src/ts/trainer/lessons";
+import {
+  currentLesson,
+  progress,
+  setCurrentLesson,
+} from "../../src/ts/trainer/lessons";
 
 describe("backup", () => {
   it("round trips key stats and progress", () => {
@@ -22,7 +26,43 @@ describe("backup", () => {
     expect(importBackup(json)).toBe(true);
 
     expect(getKeyStats().layouts["qwerty"]?.["KeyA"]?.total).toBe(1);
-    expect(progress().current).toBe(3);
+    expect(currentLesson()).toBe(3);
+    expect(JSON.parse(json)).toMatchObject({ version: 2 });
+  });
+
+  it("upgrades a version 1 backup on import", () => {
+    const json = JSON.stringify({
+      version: 1,
+      keyStats: { version: 2, layouts: {} },
+      progress: {
+        version: 1,
+        current: 1,
+        unlocked: 2,
+        attempts: [
+          { lesson: 0, wpm: 40, acc: 99, perKey: {}, ts: 1 },
+          { lesson: 99, wpm: 40, acc: 99, perKey: {}, ts: 2 },
+        ],
+      },
+    });
+    expect(parseBackup(json)).toMatchObject({ version: 2 });
+    expect(importBackup(json)).toBe(true);
+    expect(progress()).toEqual({
+      version: 2,
+      layouts: {
+        qwerty: { current: 1, unlocked: 2, best: { "home-row": 40 } },
+      },
+      attempts: [
+        {
+          lesson: "home-row",
+          layout: "qwerty",
+          wpm: 40,
+          acc: 99,
+          perKey: {},
+          ts: 1,
+        },
+      ],
+    });
+    expect(exportBackup()).toContain('"version":2');
   });
 
   it("upgrades v1 key stats on import", () => {

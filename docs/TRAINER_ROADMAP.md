@@ -18,9 +18,9 @@ Gaps:
 - Key stats v2 keeps speed apart from errors: emaMs takes only correct, non-recovery samples with pauses capped at three times the average, errRate is its own moving average, and deletes advance the clock. Shift is still folded into the base key in key-stats.ts. Panel and tips label keys slow or error-prone.
 - Unlocks use test-level numbers: canUnlock in lessons.ts reads the bar from trainerUnlock through criteriaFor, and only strict asks for two passes in a row; perKey from index.ts is still read nowhere.
 - Early lessons are gibberish: english.json has 3 home-row words, so with minReal 30 at lessons.ts:118 lessons 1-4 are mostly "afa sas dad" from lessons.ts:142-171. The pool is built once at session.ts:126-150.
-- Layout is assumed qwerty: names hardcoded at lessons.ts:57-67, progress global at lessons.ts:257-262. "default" now resolves through keymapLayout in utils/layout-name.ts; commit C still owes per-layout progress.
+- Layout is assumed qwerty in the lesson names hardcoded at lessons.ts:63-73. "default" resolves through keymapLayout in utils/layout-name.ts, and progress is per layout since Progress v2: `progressLayout()` in lessons.ts names the entry that `currentLesson()`, `unlockedUpTo()` and `bestOf()` read.
 - Config leaks: lifecycle.ts:110-111 fires the finished event before the store is set, preset-controller.ts:46 saves lesson values to the account, session.ts:209-213 lets punctuation alter scored text.
-- No escape hatch for progress: the progress store in lessons.ts passes no migrate and keeps a global 100-attempt cap. Key stats migrate v1 through the localStorage hook and backup.ts accepts v1 key stats on import.
+- Progress v2 migrates v1 through the localStorage hook and on backup import, keeps 1000 attempts with at most 50 per lesson and layout, and stores a best per lesson so trimming never evicts one. Key stats do the same since key stats v2.
 
 ## Expansion ideas
 
@@ -101,7 +101,7 @@ A lesson map shows legends, state and best per lesson, plus a continue button. S
 
 Plumbing mirrors every SolidJS page: PageName union, solidPage, route, index.html container, mount key, nav button. nginx already serves any path. Starting a lesson is startLesson then navigate, since the test page restarts on show. Bests need a new progress field; the 100-attempt cap evicts them. The reviewer cut the intro modal, the mobile row and the keytip.
 
-First slice, landed in `feat(trainer): add the trainer page with a lesson map and a shared begin action`: `/trainer` route, nav button, a "Trainer: open page" command, a lesson map with legends, state and a best derived from the stored attempts whose unlocked rows start the lesson, a continue button, and `beginLesson` in trainer/actions.ts shared with the commandline. Still to come: the picker modal, the attempts chart, the per-lesson table, and a per-lesson best field once commit C raises the attempt cap.
+First slice, landed in `feat(trainer): add the trainer page with a lesson map and a shared begin action`: `/trainer` route, nav button, a "Trainer: open page" command, a lesson map with legends, state and a best derived from the stored attempts whose unlocked rows start the lesson, a continue button, and `beginLesson` in trainer/actions.ts shared with the commandline. The per-lesson best field landed with Progress v2 in `feat(trainer): foundations C, progress v2 with lesson ids and per-layout state`. Still to come: the picker modal, the attempts chart and the per-lesson table.
 
 Risk: commandline exec wipes a chained modal unless opensModal is set.
 
@@ -139,7 +139,7 @@ Risk: the layout emulator has no dead-key state, so the French track only works 
 
 Reloads, presets and login stop desyncing the lesson. Unlocks cannot be earned on altered text.
 
-Commit A: swap two lines in lifecycle.ts and refresh the snapshot on the finished event; stop the lesson on watched-key, layout and language changes; gate attempt recording on all target chars being allowed, which also catches Custom Text edits. Commit B: resolve "default" to the real layout name (done). Commit C: Progress v2 with lesson ids, a layout field and a larger attempt cap, backup v2 that migrates on import. Schema bumps are fine by decision 5; a discriminated union never triggers migrate, so bump the version literal instead.
+Commit A: swap two lines in lifecycle.ts and refresh the snapshot on the finished event; stop the lesson on watched-key, layout and language changes; gate attempt recording on all target chars being allowed, which also catches Custom Text edits. Commit B: resolve "default" to the real layout name (done). Commit C: Progress v2 with lesson ids, a layout field and a larger attempt cap, backup v2 that migrates on import (done in `feat(trainer): foundations C, progress v2 with lesson ids and per-layout state`). Schema bumps are fine by decision 5; a discriminated union never triggers migrate, so bump the version literal instead.
 
 First slice: commit A, session hardening plus a session spec, about 80 lines.
 
@@ -190,9 +190,9 @@ Dropped by decision 2. Kept here for the record: stage one was a managed trainer
 7. key-stats.ts:51-59 skips deletes without advancing the clock; no pause cap. Done in key stats v2.
 8. key-stats.ts:95-111 ignores sample.shifted.
 9. lessons.ts:297-313 canUnlock ignores perKey; lessons.spec.ts:156 locks this in.
-10. lessons.ts:265,355 cap attempts at 100 across all lessons.
-11. The progress store in lessons.ts passes no migrate; backup.ts is v1-literal for progress. Key stats and their backup entry migrate since key stats v2.
-12. lessons.ts:257-262 progress is global and attempts lack a layout field.
+10. lessons.ts:265,355 capped attempts at 100 across all lessons. Done in foundations C: `trimAttempts` keeps 1000 overall and 50 per lesson and layout.
+11. The progress store in lessons.ts passed no migrate; backup.ts was v1-literal for progress. Done in foundations C: `upgradeProgress` runs from the localStorage hook and from the backup union.
+12. lessons.ts:257-262 progress was global and attempts lacked a layout field. Done in foundations C: `Progress.layouts` keyed by `progressLayout()`, `Attempt.layout` and `Attempt.lesson` as an id.
 
 ## Build order
 
@@ -207,7 +207,7 @@ Now, the page and the signals everything reads:
 
 Next, honest data and surfaces on it:
 
-7. foundations C: Progress v2 with lesson ids, layout field, per-layout current and unlocked, larger cap; backup v2.
+7. foundations C: Progress v2 with lesson ids, layout field, per-layout current and unlocked, larger cap; backup v2. Done in `feat(trainer): foundations C, progress v2 with lesson ids and per-layout state`; covers foundation items 10 to 12 above.
 8. mastery-and-phases: the gate only, on top of the configured floor.
 9. feedback-loop: the result card with retry and next.
 10. progress-dashboard: attempts chart and per-lesson table on the page.
@@ -234,5 +234,6 @@ Every build-order step is run with the block below in its prompt. Later prompts 
 Standing requirements, carry these into every step
 - No em dashes anywhere: code, comments, commit messages, PR title and body, docs, and the next prompt you write.
 - No code comments unless a line would be misread without one. When needed, one short line saying why, never what.
-- Before committing, spawn a subagent with model opus to review the full diff. Ask it to check correctness, any behaviour change when no lesson is active, missing test coverage, and violations of the two rules above. Fix what it finds. Do this even if the diff looks small.
-- Push the branch and open a PR against trainer, subscribe to its activity and schedule an hourly check-in until it is merged or closed. When the PR is merged, write the prompt for the next build-order step in docs/TRAINER_ROADMAP.md with the same shape as this one: context, work items with file:line refs verified against the current trainer branch, tests, validation, deliverable, and this Standing requirements block copied verbatim, including this instruction. Post that prompt in your reply, then start it in this same session on a fresh branch from the updated trainer. Stop iterating once the PR for step 6 is merged, or when a step is blocked on a decision only the user can make; in both cases say so and stop. If a PR is closed without merging, stop and ask.
+- Steps 7 to 13 go on one branch from `trainer` at b556c59 or later, one commit per step in the `feat(trainer): ...` style of the history, each step validated (specs, typecheck, lint, format, madge, headless Chromium) and its roadmap lines updated before the next step starts. Do not open a PR between steps.
+- Once step 13 is committed, spawn a subagent with model opus to review the full branch diff against origin/trainer. Ask it to check correctness, any behaviour change when no lesson is active, missing test coverage, stale line refs in docs, and violations of the two rules above. Fix what it finds and fold each fix into the step commit it belongs to with `fixup!` commits and `GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash origin/trainer`. Do this even if the diff looks small.
+- Then push the branch, open one PR against trainer, subscribe to its activity and schedule an hourly check-in until it is merged or closed. When the PR is merged, stop iterating and say so; the next prompt (step 14 onward) is written on request. If a step is blocked on a decision only the user can make, say so and stop. If the PR is closed without merging, stop and ask.

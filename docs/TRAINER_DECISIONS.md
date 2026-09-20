@@ -19,6 +19,10 @@ Settled 2026-09-20 after the expansion exploration in [TRAINER_ROADMAP.md](./TRA
 - Quotes and code tracks from `curriculum-tracks`.
 - keybr-style confidence-driven key introduction, already dropped by the exploration.
 
+## Notes on Progress v2
+
+- v1 progress had no layout field. The migration files every v1 attempt, current and unlocked under `qwerty`, because it runs when the module loads and the config is not available yet. A v1 user on another layout keeps the history in the qwerty bucket and starts that layout fresh; re-typing a lesson is cheaper than guessing.
+
 ## Notes on the French goal
 
 - canadian_french has four layers per key: unshifted, shift, AltGr, shift + AltGr. `findLayoutKey` already returns the layer, and `keycodeToLayoutKey` reads any layer.

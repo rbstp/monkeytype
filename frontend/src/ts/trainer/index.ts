@@ -14,6 +14,7 @@ import {
   isLessonText,
   lessonChars,
   LESSONS,
+  progressLayout,
   recordAttempt,
 } from "./lessons";
 import { getActiveLesson } from "./session";
@@ -60,7 +61,8 @@ export function onTestFinished(test: FinishedTest): void {
       }
 
       const unlocked = recordAttempt({
-        lesson: lessonIndex,
+        lesson: lesson.id,
+        layout: progressLayout(),
         wpm: test.completedEvent.wpm,
         acc: test.completedEvent.acc,
         perKey: countPerKey(samples, lesson),

@@ -3,10 +3,11 @@ import { For, JSXElement, Show } from "solid-js";
 import { inputLayoutObject, isTestActive } from "../../../states/test";
 import { beginLesson } from "../../../trainer/actions";
 import {
-  bestWpm,
+  bestOf,
+  currentLesson,
   lessonChars,
   LESSONS,
-  progress,
+  unlockedUpTo,
 } from "../../../trainer/lessons";
 import { getActiveLesson } from "../../../trainer/session";
 import { FaSolidIcon } from "../../../types/font-awesome";
@@ -19,9 +20,9 @@ import { Page } from "../../common/Page";
 type LessonState = "active" | "current" | "unlocked" | "locked";
 
 function lessonState(index: number): LessonState {
-  if (progress().unlocked < index) return "locked";
+  if (unlockedUpTo() < index) return "locked";
   if (getActiveLesson() === index) return "active";
-  if (progress().current === index) return "current";
+  if (currentLesson() === index) return "current";
   return "unlocked";
 }
 
@@ -29,11 +30,11 @@ function stateIcon(state: LessonState, index: number): FaSolidIcon {
   if (state === "active") return "fa-play";
   if (state === "current") return "fa-arrow-right";
   if (state === "locked") return "fa-lock";
-  return progress().unlocked > index ? "fa-check" : "fa-unlock";
+  return unlockedUpTo() > index ? "fa-check" : "fa-unlock";
 }
 
 export function TrainerPage(): JSXElement {
-  const currentName = (): string => LESSONS[progress().current]?.name ?? "";
+  const currentName = (): string => LESSONS[currentLesson()]?.name ?? "";
 
   const legends = (index: number): string => {
     const layout = inputLayoutObject();
@@ -41,8 +42,8 @@ export function TrainerPage(): JSXElement {
     return lessonChars(index, layout).fresh.join(" ");
   };
 
-  const bestLabel = (index: number): string => {
-    const best = bestWpm(progress().attempts, index);
+  const bestLabel = (id: string): string => {
+    const best = bestOf(id);
     return best === undefined ? "" : `best ${Math.round(best)} wpm`;
   };
 
@@ -53,10 +54,10 @@ export function TrainerPage(): JSXElement {
           <H2 text="trainer" fa={{ icon: "fa-graduation-cap" }} class="pb-0" />
           <Button
             fa={{ icon: "fa-play" }}
-            text={`continue lesson ${progress().current + 1}: ${currentName()}`}
+            text={`continue lesson ${currentLesson() + 1}: ${currentName()}`}
             disabled={isTestActive()}
             class="px-8 py-4"
-            onClick={() => void beginLesson(progress().current)}
+            onClick={() => void beginLesson(currentLesson())}
           />
         </div>
         <div class="grid gap-2">
@@ -100,7 +101,7 @@ export function TrainerPage(): JSXElement {
                       )}
                     </Show>
                   </span>
-                  <Show when={bestLabel(index())}>
+                  <Show when={bestLabel(lesson.id)}>
                     {(text) => <span class={subClass()}>{text()}</span>}
                   </Show>
                 </button>

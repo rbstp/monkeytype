@@ -12,11 +12,7 @@ import * as Core from "../../src/ts/states/core";
 import * as Notifications from "../../src/ts/states/notifications";
 import * as TestLogic from "../../src/ts/test/test-logic";
 import { beginLesson } from "../../src/ts/trainer/actions";
-import {
-  progress,
-  replaceProgress,
-  resetProgress,
-} from "../../src/ts/trainer/lessons";
+import { replaceProgress, resetProgress } from "../../src/ts/trainer/lessons";
 import * as Session from "../../src/ts/trainer/session";
 
 vi.mock("../../src/ts/controllers/route-controller", () => ({
@@ -35,7 +31,11 @@ describe("trainer actions", () => {
 
   beforeEach(() => {
     resetProgress();
-    replaceProgress({ ...progress(), unlocked: 2 });
+    replaceProgress({
+      version: 2,
+      layouts: { qwerty: { current: 0, unlocked: 2, best: {} } },
+      attempts: [],
+    });
     restartMock.mockReset().mockResolvedValue();
     navigateMock.mockReset().mockResolvedValue();
     startLessonMock = vi.spyOn(Session, "startLesson").mockResolvedValue(true);

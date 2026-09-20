@@ -2,12 +2,12 @@ import { navigate } from "../controllers/route-controller";
 import { getActivePage } from "../states/core";
 import { showNoticeNotification } from "../states/notifications";
 import * as TestLogic from "../test/test-logic";
-import { progress } from "./lessons";
+import { unlockedUpTo } from "./lessons";
 import { startLesson } from "./session";
 
 /** Shared by the trainer page and the commandline, so the unlock gate lives once. */
 export async function beginLesson(index: number): Promise<boolean> {
-  if (progress().unlocked < index) {
+  if (unlockedUpTo() < index) {
     showNoticeNotification("Pass the previous lesson first.");
     return false;
   }

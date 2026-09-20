@@ -20,12 +20,15 @@ import { onTestFinished } from "../../src/ts/trainer";
 import { getKeyStats, resetKeyStats } from "../../src/ts/trainer/key-stats";
 import {
   Attempt,
+  currentLesson,
   isLessonText,
   lessonChars,
   progress,
+  Progress,
   recordAttempt,
   replaceProgress,
   resetProgress,
+  unlockedUpTo,
 } from "../../src/ts/trainer/lessons";
 import {
   getActiveLesson,
@@ -284,11 +287,17 @@ describe("trainer session", () => {
 
   describe("settings", () => {
     const attempt = (wpm: number, acc: number): Attempt => ({
-      lesson: 0,
+      lesson: "home-row",
+      layout: "qwerty",
       wpm,
       acc,
       perKey: {},
       ts: 0,
+    });
+    const stored = (attempts: Attempt[]): Progress => ({
+      version: 2 as const,
+      layouts: {},
+      attempts,
     });
 
     it("sizes the lesson from trainerWordsPerTest", async () => {
@@ -353,37 +362,27 @@ describe("trainer session", () => {
     it("judges an attempt against the configured bar", () => {
       replaceConfig({ trainerUnlock: "strict" });
       expect(recordAttempt(attempt(36, 99))).toBe(false);
-      expect(progress().unlocked).toBe(0);
+      expect(unlockedUpTo()).toBe(0);
       expect(recordAttempt(attempt(36, 99))).toBe(true);
-      expect(progress().unlocked).toBe(1);
+      expect(unlockedUpTo()).toBe(1);
     });
 
     it("re-evaluates stored attempts when the bar changes", () => {
-      replaceProgress({
-        version: 1,
-        current: 0,
-        unlocked: 0,
-        attempts: [attempt(26, 96)],
-      });
-      expect(progress().unlocked).toBe(0);
+      replaceProgress(stored([attempt(26, 96)]));
+      expect(unlockedUpTo()).toBe(0);
       expect(setConfig("trainerUnlock", "relaxed")).toBe(true);
-      expect(progress().unlocked).toBe(1);
+      expect(unlockedUpTo()).toBe(1);
       expect(setConfig("trainerUnlock", "strict")).toBe(true);
-      expect(progress().unlocked).toBe(1);
+      expect(unlockedUpTo()).toBe(1);
     });
 
     it("re-evaluates stored attempts once the config loads", async () => {
-      replaceProgress({
-        version: 1,
-        current: 0,
-        unlocked: 0,
-        attempts: [attempt(26, 96)],
-      });
+      replaceProgress(stored([attempt(26, 96)]));
       await Lifecycle.applyConfig({
         ...getDefaultConfig(),
         trainerUnlock: "relaxed",
       });
-      expect(progress().unlocked).toBe(1);
+      expect(unlockedUpTo()).toBe(1);
     });
   });
 
@@ -415,6 +414,13 @@ describe("trainer session", () => {
       finished(["as ", "sad ", "fall "]);
       await flush();
       expect(progress().attempts).toHaveLength(1);
+      expect(progress().attempts[0]).toMatchObject({
+        lesson: "home-row",
+        layout: "qwerty",
+        wpm: 40,
+      });
+      expect(currentLesson()).toBe(0);
+      expect(progress().layouts["qwerty"]?.best).toEqual({ "home-row": 40 });
     });
 
     it("records key samples under the keymap layout for a default layout", async () => {
