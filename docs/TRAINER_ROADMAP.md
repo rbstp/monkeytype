@@ -17,7 +17,7 @@ Gaps:
 - The chip at LessonNotice.tsx names the active lesson, its best and the target on the test screen; the result card at LessonResultCard.tsx prints the shortfall or the unlock with retry and next. The unlock toast in trainer/index.ts stays.
 - Key stats v2 keeps speed apart from errors: emaMs takes only correct, non-recovery samples with pauses capped at three times the average, errRate is its own moving average, and deletes advance the clock. Shift is still folded into the base key in key-stats.ts. Panel and tips label keys slow or error-prone.
 - Unlocks read the configured floor through criteriaFor and, since the mastery gate, `masteryOf` in lessons.ts pools perKey over the last three attempts: a new key needs 20 samples and at most 3% errors before `unlockStatus` says ok. The result card prints the first shortfall.
-- Early lessons are gibberish: english.json has 3 home-row words, so with minReal 30 at lessons.ts:118 lessons 1-4 are mostly "afa sas dad" from lessons.ts:142-171. The pool is built once at session.ts:126-150.
+- Early lessons read real words since the adaptive-words slice: `largestCorpus` in session.ts loads english_10k, `buildLessonWords` draws by damped rank when the corpus is ordered by frequency and never mutates a real word. The 120-word pool is still built once per startLesson; weak-key weighting and mid-lesson rebuilds are build-order step 17.
 - Layout is assumed qwerty in the lesson names hardcoded at lessons.ts:63-73. "default" resolves through keymapLayout in utils/layout-name.ts, and progress is per layout since Progress v2: `progressLayout()` in lessons.ts names the entry that `currentLesson()`, `unlockedUpTo()` and `bestOf()` read.
 - Config leaks: lifecycle.ts:110-111 fires the finished event before the store is set, preset-controller.ts:46 saves lesson values to the account, session.ts:209-213 lets punctuation alter scored text.
 - Progress v2 migrates v1 through the localStorage hook and on backup import, keeps 1000 attempts with at most 50 per lesson and layout, and stores a best per lesson so trimming never evicts one. Key stats do the same since key stats v2.
@@ -51,9 +51,9 @@ Lesson 2 reads "is as all if see like", not "ask sajil eseke". Each test chases 
 
 The corpus swap lives in the language load in session.ts; Zipf is gated on orderedByFrequency because French lists are alphabetical. Weights belong in the 120-word pool, and rebuilds must go through applyCustomText. The reviewer split it into three slices and moved weighting after sample-model-v2.
 
-First slice: biggest corpus, damped rank sampling, pool of 120, word-initial capitals.
+First slice landed in `feat(trainer): adaptive-words, biggest corpus and damped rank sampling`: biggest corpus, damped rank sampling with weight 1 / (rank + 10) ^ 0.6, pool of 120, word-initial capitals for the capitals lesson, and a fresh-char pass that resamples a real word instead of mutating one.
 
-Risk: the fresh-char pass mutates real words; make it resample.
+Risk, resolved: the fresh-char pass now resamples; only pseudo words are still mutated.
 
 ### Lesson feedback loop
 
@@ -211,7 +211,7 @@ Next, honest data and surfaces on it:
 8. mastery-and-phases: the gate only, on top of the configured floor. Done in `feat(trainer): mastery-and-phases, gate unlocks on per-key mastery`; covers foundation item 9 above.
 9. feedback-loop: the result card with retry and next. Done in `feat(trainer): feedback-loop, result card with retry and next`.
 10. progress-dashboard: attempts chart and per-lesson table on the page. Done in `feat(trainer): progress-dashboard, attempts chart and lesson table`.
-11. adaptive-words: corpus and Zipf slice.
+11. adaptive-words: corpus and Zipf slice. Done in `feat(trainer): adaptive-words, biggest corpus and damped rank sampling`.
 12. targeted-practice: the drill only.
 13. export and import as files instead of a single-line commandline input.
 

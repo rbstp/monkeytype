@@ -132,22 +132,58 @@ export type WordOptions = {
   minReal: number;
   minLength: number;
   maxLength: number;
+  orderedByFrequency: boolean;
   random: () => number;
 };
 
 const defaultWordOptions: WordOptions = {
-  count: 60,
+  count: 120,
   minReal: 30,
   minLength: 2,
   maxLength: 6,
+  orderedByFrequency: false,
   random: Math.random,
 };
+
+const rankDamping = 10;
+const rankExponent = 0.6;
 
 const vowels = new Set("aeiouyàâäéèêëîïôöùûü");
 const isLetter = (char: string): boolean => /\p{L}/u.test(char);
 
 function pick<T>(items: T[], random: () => number): T | undefined {
   return items[Math.floor(random() * items.length)];
+}
+
+/**
+ * Draws from a frequency-ordered list with weight 1 / (rank + 10) ^ 0.6, so
+ * common words lead without the top ten swamping the rest. An unordered list
+ * draws uniformly.
+ */
+function rankSampler(
+  items: string[],
+  ordered: boolean,
+  random: () => number,
+): () => string | undefined {
+  if (!ordered) return () => pick(items, random);
+  const cumulative: number[] = [];
+  let total = 0;
+  for (let rank = 0; rank < items.length; rank++) {
+    total += 1 / (rank + rankDamping) ** rankExponent;
+    cumulative.push(total);
+  }
+  return () => {
+    if (items.length === 0) return undefined;
+    const target = random() * total;
+    let low = 0;
+    let high = cumulative.length - 1;
+    while (low < high) {
+      const mid = (low + high) >> 1;
+      if ((cumulative[mid] as number) < target) low = mid + 1;
+      else high = mid;
+    }
+    return items[low];
+  };
 }
 
 function pickWeighted(
@@ -198,10 +234,17 @@ function pseudoWord(
   return word;
 }
 
+function capitalised(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
 /**
  * Builds a practice word list from real words made only of allowed characters,
  * topped up with pseudo words when the real list is too short.
- * At least half of the words contain a character introduced by the lesson.
+ * Every character the lesson introduces gets an equal share of the pool: a
+ * word lacking it is swapped for a real word that has it, capitalised when the
+ * lesson introduces capitals, or given the symbol at its end, so real words
+ * are never mutated into gibberish and no new key goes untaught.
  */
 export function buildLessonWords(
   realWords: string[],
@@ -211,7 +254,6 @@ export function buildLessonWords(
   const options = { ...defaultWordOptions, ...overrides };
   const allowed = new Set(chars.allowed);
   const fresh = new Set(chars.fresh);
-  const freshLetters = chars.fresh.filter(isLetter);
   const freshSymbols = chars.fresh.filter((char) => !isLetter(char));
   const letters = chars.allowed.filter(isLetter);
 
@@ -224,6 +266,15 @@ export function buildLessonWords(
       ),
     ),
   ];
+  const drawReal = rankSampler(
+    real,
+    options.orderedByFrequency,
+    options.random,
+  );
+  const drawMatching = (
+    test: (word: string) => boolean,
+  ): (() => string | undefined) =>
+    rankSampler(real.filter(test), options.orderedByFrequency, options.random);
 
   const words: string[] = [];
   while (words.length < options.count) {
@@ -231,31 +282,54 @@ export function buildLessonWords(
       real.length > 0 &&
       (real.length >= options.minReal || options.random() < 0.3);
     const word = useReal
-      ? (pick(real, options.random) ?? "")
+      ? (drawReal() ?? "")
       : pseudoWord(letters, freshSymbols, fresh, options);
     if (word === "") break;
     words.push(word);
   }
 
-  const containsFresh = (word: string): boolean =>
-    [...word].some((char) => fresh.has(char));
-  let withFresh = words.filter(containsFresh).length;
-  for (let i = 0; i < words.length; i++) {
-    if (withFresh >= Math.ceil(words.length / 2)) break;
-    const word = words[i] as string;
-    if (containsFresh(word)) continue;
-    if (freshSymbols.length > 0) {
-      words[i] = word + (pick(freshSymbols, options.random) ?? "");
-    } else if (freshLetters.length > 0) {
-      const at = Math.floor(options.random() * (word.length + 1));
-      words[i] =
-        word.slice(0, at) +
-        (pick(freshLetters, options.random) ?? "") +
-        word.slice(at);
-    } else {
-      break;
+  const lower = (char: string): string => char.toLowerCase();
+  const isUpper = (char: string): boolean =>
+    isLetter(char) && lower(char) !== char;
+  const pseudoWith = (char: string): string => {
+    const pseudo = pseudoWord(letters, freshSymbols, fresh, options);
+    if (isUpper(char)) return char + lower(pseudo.slice(1));
+    if (pseudo.includes(char)) return pseudo;
+    const at = Math.floor(options.random() * (pseudo.length + 1));
+    return pseudo.slice(0, at) + char + pseudo.slice(at);
+  };
+  const replacementFor = (
+    word: string,
+    char: string,
+    draw: () => string | undefined,
+  ): string => {
+    if (!isLetter(char)) return word + char;
+    if (isUpper(char)) {
+      if (word.startsWith(lower(char))) return capitalised(word);
+      const drawn = draw();
+      return drawn === undefined ? pseudoWith(char) : capitalised(drawn);
     }
-    withFresh++;
+    return draw() ?? pseudoWith(char);
+  };
+
+  const quota = Math.max(
+    1,
+    Math.floor(words.length / Math.max(1, chars.fresh.length)),
+  );
+  const touched = new Set<number>();
+  for (const char of chars.fresh) {
+    let have = words.filter((word) => word.includes(char)).length;
+    if (have >= quota) continue;
+    const draw = drawMatching((word) =>
+      isUpper(char) ? word.startsWith(lower(char)) : word.includes(char),
+    );
+    for (let i = 0; i < words.length && have < quota; i++) {
+      const word = words[i] as string;
+      if (touched.has(i) || word.includes(char)) continue;
+      words[i] = replacementFor(word, char, draw);
+      touched.add(i);
+      have++;
+    }
   }
 
   return words;

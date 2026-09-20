@@ -60,6 +60,10 @@ const punctuation = LESSONS.findIndex(
   (lesson) => lesson.name === "punctuation",
 );
 
+function capitalised(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
 describe("lessons", () => {
   describe("ids", () => {
     it("are unique and stable", () => {
@@ -134,7 +138,43 @@ describe("lessons", () => {
         minReal: 5,
       });
 
-      for (const word of words) expect(real).toContain(word);
+      for (const word of words) {
+        if (/[jk]/.test(word)) continue;
+        expect(real).toContain(word.replace(/;$/, ""));
+      }
+    });
+
+    it("gives every fresh character a share of the pool", () => {
+      const real = ["as", "ad", "sad", "lad", "fall", "all", "ask", "dad"];
+      const home = buildLessonWords(real, lessonChars(0, qwerty), {
+        ...options,
+        minReal: 5,
+        random: seeded(21),
+      });
+      for (const char of lessonChars(0, qwerty).fresh) {
+        expect(
+          home.filter((word) => word.includes(char)).length,
+        ).toBeGreaterThanOrEqual(5);
+      }
+
+      const comma = lessonChars(
+        LESSONS.findIndex((lesson) => lesson.id === "c-comma"),
+        qwerty,
+      );
+      const withComma = buildLessonWords(
+        ["cat", "ice", "cake", "dice", "call", "act", "case", "rice"],
+        comma,
+        { ...options, minReal: 5, random: seeded(22) },
+      );
+      expect(
+        withComma.filter((word) => word.includes(",")).length,
+      ).toBeGreaterThanOrEqual(20);
+      expect(
+        withComma.filter((word) => word.includes("c")).length,
+      ).toBeGreaterThanOrEqual(20);
+      for (const word of withComma) {
+        for (const char of word) expect(comma.allowed).toContain(char);
+      }
     });
 
     it("makes at least half of the words use a fresh character", () => {
@@ -149,6 +189,114 @@ describe("lessons", () => {
       expect(buildLessonWords([], { allowed: [], fresh: [] }, options)).toEqual(
         [],
       );
+    });
+
+    it("defaults to a pool of 120", () => {
+      const words = buildLessonWords([], lessonChars(1, qwerty), {
+        random: seeded(3),
+      });
+      expect(words).toHaveLength(120);
+    });
+
+    describe("rank sampling", () => {
+      const alphabet = [..."abcdefghijklmnopqrstuvwxyz"];
+      const toWord = (index: number): string =>
+        `w${alphabet[Math.floor(index / 26)]}${alphabet[index % 26]}`;
+      const ranked = Array.from({ length: 200 }, (_, index) => toWord(index));
+      const chars = { allowed: alphabet, fresh: ["w"] };
+      const counts = (words: string[], from: number, to: number): number =>
+        words.filter((word) => {
+          const rank = ranked.indexOf(word);
+          return rank >= from && rank < to;
+        }).length;
+
+      it("prefers early ranks when the corpus is ordered by frequency", () => {
+        const words = buildLessonWords(ranked, chars, {
+          count: 2000,
+          random: seeded(7),
+          orderedByFrequency: true,
+        });
+        expect(counts(words, 0, 20)).toBeGreaterThan(
+          counts(words, 180, 200) * 2,
+        );
+        for (const word of words) expect(ranked).toContain(word);
+      });
+
+      it("draws uniformly when the corpus is not ordered", () => {
+        const words = buildLessonWords(ranked, chars, {
+          count: 2000,
+          random: seeded(7),
+        });
+        expect(counts(words, 0, 20)).toBeLessThan(counts(words, 180, 200) * 2);
+        expect(counts(words, 180, 200)).toBeLessThan(counts(words, 0, 20) * 2);
+      });
+    });
+
+    it("resamples a real word with a fresh character instead of mutating one", () => {
+      const chars = lessonChars(1, qwerty);
+      const real = ["as", "ad", "sad", "lad", "see", "is", "like", "idea"];
+      const words = buildLessonWords(real, chars, {
+        ...options,
+        minReal: 4,
+        random: seeded(11),
+      });
+      for (const word of words) expect(real).toContain(word);
+      const withFresh = words.filter((word) => /[ei]/.test(word));
+      expect(withFresh.length).toBeGreaterThanOrEqual(words.length / 2);
+    });
+
+    it("falls back to pseudo words when no real word carries a fresh character", () => {
+      const chars = lessonChars(1, qwerty);
+      const real = ["as", "ad", "sad", "lad", "fall", "all", "ask", "dad"];
+      const words = buildLessonWords(real, chars, {
+        ...options,
+        minReal: 4,
+        random: seeded(12),
+      });
+      const withFresh = words.filter((word) => /[ei]/.test(word));
+      expect(withFresh.length).toBeGreaterThanOrEqual(words.length / 2);
+      expect(words.some((word) => !real.includes(word))).toBe(true);
+      for (const word of words) {
+        if (!real.includes(word)) expect(/[ei]/.test(word)).toBe(true);
+      }
+    });
+
+    it("capitalises real words for the capitals lesson", () => {
+      const chars = lessonChars(capitals, qwerty);
+      const real = ["the", "quick", "brown", "fox", "jumps", "over", "lazy"];
+      const words = buildLessonWords(real, chars, {
+        ...options,
+        minReal: 4,
+        random: seeded(13),
+      });
+      const capitalWords = words.filter((word) => /^[A-Z]/.test(word));
+      expect(capitalWords.length).toBeGreaterThanOrEqual(words.length / 2);
+      const realInitials = new Set(real.map((word) => word.charAt(0)));
+      for (const word of words) {
+        const lowered = word.charAt(0).toLowerCase() + word.slice(1);
+        if (realInitials.has(lowered.charAt(0))) {
+          expect(real).toContain(lowered);
+        } else {
+          expect(/^[A-Z]/.test(word)).toBe(true);
+        }
+        expect(word.slice(1)).toBe(word.slice(1).toLowerCase());
+      }
+      for (const word of real) expect(words).toContain(capitalised(word));
+    });
+
+    it("covers every capital from a wide corpus", () => {
+      const real = [..."abcdefghijklmnopqrstuvwxyz"].map(
+        (letter) => `${letter}ab`,
+      );
+      const words = buildLessonWords(real, lessonChars(capitals, qwerty), {
+        minReal: 10,
+        random: seeded(14),
+      });
+      for (const letter of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+        expect(
+          words.filter((word) => word.startsWith(letter)).length,
+        ).toBeGreaterThanOrEqual(4);
+      }
     });
 
     it("attaches fresh symbols to words", () => {

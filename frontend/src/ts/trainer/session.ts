@@ -1,6 +1,11 @@
 import { untrack } from "solid-js";
 import { z } from "zod";
 import { FunboxSchema } from "@monkeytype/schemas/configs";
+import {
+  Language,
+  LanguageObject,
+  LanguageSchema,
+} from "@monkeytype/schemas/languages";
 import { CustomTextSettingsSchema } from "@monkeytype/schemas/results";
 import { ModeSchema } from "@monkeytype/schemas/shared";
 import { Config } from "../config/store";
@@ -136,6 +141,28 @@ function restore(previous: Snapshot, restoreMode: boolean): void {
   setSnapshot(null);
 }
 
+const corpusSuffixes = ["_10k", "_5k", "_1k", ""] as const;
+
+/**
+ * Names the biggest word list that exists for a language, so lessons draw from
+ * english_10k instead of the 200 words of english.
+ */
+export function largestCorpus(
+  language: string,
+  exists: (name: string) => boolean = (name) =>
+    LanguageSchema.safeParse(name).success,
+): string {
+  const base = language.replace(/_\d+k$/, "");
+  for (const suffix of corpusSuffixes) {
+    if (exists(`${base}${suffix}`)) return `${base}${suffix}`;
+  }
+  return language;
+}
+
+async function loadCorpus(language: Language): Promise<LanguageObject> {
+  return getLanguage(largestCorpus(language) as Language);
+}
+
 /**
  * Prepares a custom test for the lesson. The caller restarts the test.
  */
@@ -149,9 +176,11 @@ export async function startLesson(index: number): Promise<boolean> {
 
   const [layout, language] = await Promise.all([
     __nonReactive.getInputLayout(),
-    getLanguage(Config.language),
+    loadCorpus(Config.language),
   ]);
-  const words = buildLessonWords(language.words, lessonChars(index, layout));
+  const words = buildLessonWords(language.words, lessonChars(index, layout), {
+    orderedByFrequency: language.orderedByFrequency === true,
+  });
   if (words.length === 0) {
     showNoticeNotification("This layout has no keys for this lesson.");
     return false;

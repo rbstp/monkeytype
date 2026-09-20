@@ -33,6 +33,7 @@ import {
 } from "../../src/ts/trainer/lessons";
 import {
   getActiveLesson,
+  largestCorpus,
   startLesson,
   stopLesson,
 } from "../../src/ts/trainer/session";
@@ -137,6 +138,47 @@ describe("trainer session", () => {
     noticeMock.mockRestore();
     successMock.mockRestore();
     saveConfigMock.mockRestore();
+  });
+
+  describe("corpus", () => {
+    it("names the biggest word list that exists", () => {
+      const exists = (name: string): boolean =>
+        [
+          "english",
+          "english_1k",
+          "english_10k",
+          "french",
+          "french_1k",
+        ].includes(name);
+      expect(largestCorpus("english", exists)).toBe("english_10k");
+      expect(largestCorpus("english_1k", exists)).toBe("english_10k");
+      expect(largestCorpus("french", exists)).toBe("french_1k");
+      expect(largestCorpus("code_python", exists)).toBe("code_python");
+      expect(largestCorpus("english")).toBe("english_10k");
+      expect(largestCorpus("bashkir")).toBe("bashkir");
+    });
+
+    it("loads the biggest corpus for the configured language", async () => {
+      getLanguageMock.mockClear();
+      replaceConfig({ mode: "time", language: "english" });
+      expect(await startLesson(0)).toBe(true);
+      expect(getLanguageMock).toHaveBeenCalledWith("english_10k");
+      expect(getLanguageMock).not.toHaveBeenCalledWith("english");
+    });
+
+    it("draws by rank when the corpus is ordered by frequency", async () => {
+      getLanguageMock.mockResolvedValueOnce({
+        name: "english_10k",
+        orderedByFrequency: true,
+        words: ["as", "all", "sad", "fall", "lass", "flask"],
+      } as never);
+      expect(await startLesson(0)).toBe(true);
+      const text = CustomText.getText();
+      expect(text).toHaveLength(120);
+      expect(text.filter((word) => word === "as").length).toBeGreaterThan(
+        text.filter((word) => word === "flask").length,
+      );
+    });
   });
 
   it("applies the lesson config and restores it on stop", async () => {
