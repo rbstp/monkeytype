@@ -1,9 +1,13 @@
+import { untrack } from "solid-js";
 import { z } from "zod";
 import { FunboxSchema } from "@monkeytype/schemas/configs";
 import { CustomTextSettingsSchema } from "@monkeytype/schemas/results";
 import { ModeSchema } from "@monkeytype/schemas/shared";
 import { Config } from "../config/store";
-import { saveFullConfigToLocalStorage } from "../config/persistence";
+import {
+  saveFullConfigToLocalStorage,
+  setPersistedConfigHook,
+} from "../config/persistence";
 import { setConfig } from "../config/setters";
 import { configEvent } from "../events/config";
 import { useLocalStorage } from "../hooks/useLocalStorage";
@@ -11,7 +15,9 @@ import { getCustomTextIndicator, setCustomTextIndicator } from "../states/core";
 import { showNoticeNotification } from "../states/notifications";
 import { __nonReactive, isTestActive } from "../states/test";
 import * as CustomText from "../test/custom-text";
+import { areUnsortedArraysEqual } from "../utils/arrays";
 import { getLanguage } from "../utils/json-data";
+import { camelCaseToWords } from "../utils/strings";
 import {
   buildLessonWords,
   lessonChars,
@@ -25,13 +31,16 @@ const SnapshotSchema = z.object({
   numbers: z.boolean(),
   funbox: FunboxSchema,
   lazyMode: z.boolean(),
+  layout: z.string().optional(),
+  language: z.string().optional(),
   customText: CustomTextSettingsSchema,
   indicator: z.object({ name: z.string(), isLong: z.boolean() }).optional(),
 });
 type Snapshot = z.infer<typeof SnapshotSchema>;
 
-const watchedKeys = ["punctuation", "numbers", "funbox", "lazyMode"] as const;
-type WatchedKey = (typeof watchedKeys)[number];
+const snapshotKeys = ["punctuation", "numbers", "funbox", "lazyMode"] as const;
+const textKeys = ["layout", "language"] as const;
+const watchedKeys: readonly string[] = [...snapshotKeys, ...textKeys];
 
 const wordsPerTest = 40;
 
@@ -62,13 +71,21 @@ export function tracksNextKey(): boolean {
   return Config.keymapMode === "next" || activeLesson() !== null;
 }
 
-function takeSnapshot(): Snapshot {
+function configSnapshot(): Omit<Snapshot, "customText" | "indicator"> {
   return {
     mode: Config.mode,
     punctuation: Config.punctuation,
     numbers: Config.numbers,
     funbox: Config.funbox,
     lazyMode: Config.lazyMode,
+    layout: Config.layout,
+    language: Config.language,
+  };
+}
+
+function takeSnapshot(): Snapshot {
+  return {
+    ...configSnapshot(),
     customText: CustomText.getData(),
     indicator: getCustomTextIndicator(),
   };
@@ -168,7 +185,7 @@ export async function startLesson(index: number): Promise<boolean> {
 function resumeLesson(index: number): void {
   const lesson = LESSONS[index];
   if (lesson === undefined || !applyLessonConfig()) {
-    setActiveLesson(null);
+    stopLesson();
     return;
   }
   setCustomTextIndicator({
@@ -183,7 +200,18 @@ export function stopLesson(options = { restoreMode: true }): void {
   if (previous !== null) restore(previous, options.restoreMode);
 }
 
-configEvent.subscribe(({ key }) => {
+function stopForChange(key: string): void {
+  stopLesson();
+  showNoticeNotification(`Lesson stopped: ${camelCaseToWords(key)} changed`);
+}
+
+function isUnchanged(a: unknown, b: unknown): boolean {
+  return Array.isArray(a) && Array.isArray(b)
+    ? areUnsortedArraysEqual(a, b)
+    : a === b;
+}
+
+configEvent.subscribe(({ key, newValue, previousValue }) => {
   if (applying) return;
   if (key === "fullConfigChange") {
     inFullConfigChange = true;
@@ -192,12 +220,27 @@ configEvent.subscribe(({ key }) => {
   if (key === "fullConfigChangeFinished") {
     inFullConfigChange = false;
     const lesson = activeLesson();
-    if (lesson !== null) {
-      resumeLesson(lesson);
+    const previous = snapshot();
+    if (lesson === null) {
+      if (previous !== null) restore(previous, true);
       return;
     }
-    const leftover = snapshot();
-    if (leftover !== null) restore(leftover, true);
+    if (previous === null) {
+      setActiveLesson(null);
+      return;
+    }
+    // the incoming config is what stopLesson must return to
+    setSnapshot({ ...previous, ...configSnapshot() });
+    const stale = textKeys.find(
+      (textKey) =>
+        previous[textKey] !== undefined &&
+        previous[textKey] !== Config[textKey],
+    );
+    if (stale !== undefined) {
+      stopForChange(stale);
+      return;
+    }
+    resumeLesson(lesson);
     return;
   }
   // a full config change replays every key, which would look like the user
@@ -206,10 +249,28 @@ configEvent.subscribe(({ key }) => {
   if (activeLesson() === null) return;
   if (key === "mode") {
     stopLesson({ restoreMode: false });
-  } else if (watchedKeys.includes(key as WatchedKey)) {
-    const watched = key as WatchedKey;
+  } else if (
+    watchedKeys.includes(key) &&
+    !isUnchanged(newValue, previousValue)
+  ) {
     setSnapshot((current) =>
-      current === null ? null : { ...current, [watched]: Config[watched] },
+      current === null ? null : { ...current, [key]: Config[key] },
     );
+    stopForChange(key);
   }
 });
+
+setPersistedConfigHook((config) =>
+  untrack(() => {
+    const previous = snapshot();
+    if (activeLesson() === null || previous === null) return config;
+    return {
+      ...config,
+      mode: previous.mode,
+      punctuation: previous.punctuation,
+      numbers: previous.numbers,
+      funbox: previous.funbox,
+      lazyMode: previous.lazyMode,
+    };
+  }),
+);

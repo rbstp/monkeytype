@@ -198,7 +198,7 @@ Dropped by decision 2. Kept here for the record: stage one was a managed trainer
 
 Now, the page and the signals everything reads:
 
-1. foundations A: session hardening with a session spec.
+1. foundations A: session hardening with a session spec. Done in `fix(trainer): harden the lesson session against config changes`; covers foundation items 1 to 4 above.
 2. foundations B: resolve "default" to the real layout name.
 3. trainer-page: skeleton, lesson map, continue button, shared beginLesson action.
 4. feedback-loop: the lesson chip on the test screen.
@@ -226,3 +226,13 @@ Later, the French goal and the rest:
 20. progress-dashboard: key history and deltas.
 
 Now fixes what every later feature reads and gives the trainer its home. Next puts surfaces on data that is honest. Later needs the new data model and the layout work.
+
+## Working agreement
+
+Every build-order step is run with the block below in its prompt. Later prompts copy it verbatim.
+
+Standing requirements, carry these into every step
+- No em dashes anywhere: code, comments, commit messages, PR title and body, docs, and the next prompt you write.
+- No code comments unless a line would be misread without one. When needed, one short line saying why, never what.
+- Before committing, spawn a subagent with model opus to review the full diff. Ask it to check correctness, any behaviour change when no lesson is active, missing test coverage, and violations of the two rules above. Fix what it finds. Do this even if the diff looks small.
+- Push the branch and open a PR against trainer. When the PR is merged, reply with the prompt for the next build-order step in docs/TRAINER_ROADMAP.md. That prompt must have the same shape as this one: context, work items with file:line refs verified against the current code, tests, validation, deliverable, and this Standing requirements block copied verbatim, including this instruction.

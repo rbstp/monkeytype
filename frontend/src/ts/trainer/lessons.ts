@@ -105,6 +105,16 @@ export function lessonChars(index: number, layout: LayoutObject): LessonChars {
   return { allowed: [...allowed], fresh };
 }
 
+export function isLessonText(words: string[], allowed: string[]): boolean {
+  const chars = new Set(allowed);
+  return (
+    words.length > 0 &&
+    words.every((word) =>
+      [...word].every((char) => char === " " || chars.has(char)),
+    )
+  );
+}
+
 export type WordOptions = {
   count: number;
   minReal: number;
