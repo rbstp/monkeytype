@@ -1,9 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   exportBackup,
   importBackup,
   parseBackup,
 } from "../../src/ts/trainer/backup";
+import {
+  withOneRefusedWrite,
+  withRefusedWrites,
+} from "../__harness__/refused-writes";
 import {
   getLayoutConfusions,
   recordConfusions,
@@ -30,22 +34,6 @@ import {
   progress,
   setCurrentLesson,
 } from "../../src/ts/trainer/lessons";
-
-// a refused write, scoped to the call: an assertion failure must not leave
-// every later write throwing, and vi.restoreAllMocks does not undo a spy on
-// the storage proxy
-function withRefusedWrites<T>(run: () => T): T {
-  const setItem = vi
-    .spyOn(window.localStorage, "setItem")
-    .mockImplementation(() => {
-      throw new Error("exceeded the quota");
-    });
-  try {
-    return run();
-  } finally {
-    setItem.mockRestore();
-  }
-}
 
 describe("backup", () => {
   it("round trips key stats and progress", () => {
@@ -106,6 +94,21 @@ describe("backup", () => {
     expect(getKeyStats().layouts["qwerty"]?.["KeyB"]?.total).toBe(1);
   });
 
+  it("writes the other stores when one refuses, and still reports false", () => {
+    resetConfusions();
+    const json = JSON.stringify({
+      version: 6,
+      keyStats: { version: 2, layouts: {} },
+      progress: { version: 3, layouts: {}, attempts: [] },
+      confusions: { version: 1, layouts: { qwerty: { KeyD: { KeyK: 7 } } } },
+      transitions: { version: 1, layouts: {} },
+      keyHistory: { version: 1, layouts: {} },
+    });
+    // the key stats are written first, so the refusal lands on them
+    expect(withOneRefusedWrite(1, () => importBackup(json))).toBe(false);
+    expect(getLayoutConfusions("qwerty")).toEqual({ KeyD: { KeyK: 7 } });
+  });
+
   it("applies every cap to the blob it imports", () => {
     const row: Record<string, number> = {};
     for (let i = 0; i < 12; i++) row[`Key${i}`] = 100 - i;
@@ -145,7 +148,7 @@ describe("backup", () => {
     ).toHaveLength(12);
   });
 
-  it("imports every earlier version and reads back as version 5", () => {
+  it("imports every earlier version and reads back as version 6", () => {
     const progressV3 = { version: 3, layouts: {}, attempts: [] };
     const versions = [
       {

@@ -15,6 +15,7 @@ import {
   TrainerWordsPerTestSchema,
 } from "@monkeytype/schemas/configs";
 import { setConfigStore } from "../../src/ts/config/store";
+import { countWrites, withRefusedWrites } from "../__harness__/refused-writes";
 import * as Notifications from "../../src/ts/states/notifications";
 import {
   Attempt,
@@ -55,22 +56,6 @@ import {
   UnlockStatus,
   upgradeProgress,
 } from "../../src/ts/trainer/lessons";
-
-// a refused write, scoped to the call: an assertion failure must not leave
-// every later write throwing, and vi.restoreAllMocks does not undo a spy on
-// the storage proxy
-function withRefusedWrites<T>(run: () => T): T {
-  const setItem = vi
-    .spyOn(window.localStorage, "setItem")
-    .mockImplementation(() => {
-      throw new Error("exceeded the quota");
-    });
-  try {
-    return run();
-  } finally {
-    setItem.mockRestore();
-  }
-}
 
 function mastered(id: string, samples = 20): Attempt["perKey"] {
   const lesson = LESSONS[lessonIndex(id)];
@@ -2150,6 +2135,19 @@ describe("lessons", () => {
         expect(noticeMock).not.toHaveBeenCalled();
       });
 
+      it("says nothing when the sync cannot store its repair", async () => {
+        const { lessons, dispatch } = await loaded({
+          version: 3,
+          layouts: {
+            qwerty: { current: "home-row", unlocked: "gone", best: {} },
+          },
+          attempts: [attempt("home-row", "qwerty", 40)],
+        });
+        withRefusedWrites(() => dispatch({ key: "fullConfigChangeFinished" }));
+        expect(lessons.progress().layouts["qwerty"]?.unlocked).toBe("gone");
+        expect(noticeMock).not.toHaveBeenCalled();
+      });
+
       it("ignores a config event for another setting", async () => {
         const { lessons, dispatch } = await loaded({
           version: 3,
@@ -2330,6 +2328,25 @@ describe("lessons", () => {
         expect(noticeMock).not.toHaveBeenCalled();
       });
 
+      it("lands an import in one write, repaired and trimmed together", () => {
+        const { result, writes } = countWrites(() =>
+          replaceProgress({
+            version: 3,
+            layouts: {
+              qwerty: { current: "home-row", unlocked: "gone", best: {} },
+            },
+            attempts: [attempt("home-row", "qwerty", 40), ...filler(1000)],
+          }),
+        );
+        // a second write would store the unrepaired pointer next to the
+        // trimmed list, and a refusal between the two would half-apply it
+        expect(writes).toEqual(["trainerProgress"]);
+        expect(result).toBe(true);
+        expect(progress().layouts["qwerty"]?.unlocked).toBe("e-i");
+        expect(progress().attempts).toHaveLength(1000);
+        expect(noticeMock).toHaveBeenCalledTimes(1);
+      });
+
       it("reads the whole imported list before the caps trim it", () => {
         replaceProgress({
           version: 3,
@@ -2426,6 +2443,8 @@ describe("lessons", () => {
       const unlocks: TrainerUnlock[] = [...TrainerUnlockSchema.options];
       const lengths = [10, 25, 40, 100, 200];
       // the ends of the sweep are the schema's own floor and ceiling
+      expect(TrainerWordsPerTestSchema.safeParse(10).success).toBe(true);
+      expect(TrainerWordsPerTestSchema.safeParse(200).success).toBe(true);
       expect(TrainerWordsPerTestSchema.safeParse(9).success).toBe(false);
       expect(TrainerWordsPerTestSchema.safeParse(201).success).toBe(false);
       const unreachable: string[] = [];
@@ -2488,7 +2507,14 @@ describe("lessons", () => {
       );
       // 18 lessons on qwerty and 22 on canadian_french, each over 3 unlock
       // settings and 5 test lengths
-      expect(visits.size).toBe(18 + 22);
+      expect(
+        layouts.map(
+          ([layoutName]) =>
+            [...visits.keys()].filter((visited) =>
+              visited.startsWith(`${layoutName} `),
+            ).length,
+        ),
+      ).toEqual([18, 22]);
       expect([...new Set(visits.values())]).toEqual([15]);
     });
   });

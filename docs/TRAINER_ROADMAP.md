@@ -80,9 +80,12 @@ does work`. Decisions that shaped it are in
   on a refused write rather than announcing an unlock that was never stored,
   `syncUnlocked` holds the repair notice back the same way, and every
   `replace*` reports its write so `importBackup` fails instead of claiming a
-  success the stores do not hold. `importBackupFile` parses before it writes,
-  so a refused write is not reported as invalid data: the storage layer's own
-  notification is the one that speaks.
+  success the stores do not hold. An import lands in one write, since
+  `syncedProgress` returns the repaired pointer instead of storing it, so a
+  refusal cannot leave the store holding an unrepaired pointer beside a trimmed
+  list. `importBackupFile` parses once and writes what it parsed, so a refused
+  write is not reported as invalid data: the storage layer's own notification
+  is the one that speaks.
 - The config cannot leak: lifecycle.ts sets the store before it fires the
   finished event, the persisted config hook in session.ts keeps lesson values
   out of the saved config, and index.ts scores an attempt only when
@@ -247,6 +250,14 @@ does work`. Decisions that shaped it are in
     repair notice, every `replace*` and `importBackup`) read it instead of
     trusting the updater they already ran.
 
+39. review, one write per import. `fix(trainer): review, land an import in a
+    single write`: `syncedProgress` hands the repaired pointer back instead of
+    storing it, so the repair and the caps land together and a refusal cannot
+    half-apply an import; `importParsedBackup` spares the second parse; and the
+    guards the suite could not tell from their absence (the sync's own write,
+    the import's write count, a store refusing while the others take) get the
+    specs that separate them.
+
 ## Open
 
 - The localStorage load path stores what `upgradeProgress` returns without
@@ -260,13 +271,14 @@ does work`. Decisions that shaped it are in
   `setConfig` dispatches before it writes the store, so a test length change
   re-bars the stored attempts only at the next sync or attempt.
 - `useLocalStorageStore` persists through an effect and drops the result, so a
-  refused write is invisible to its callers the way it used to be for
-  `useLocalStorage`. The trainer session state is the only reader, and it
-  reports nothing to the user, so it is left alone.
-- The record paths (`recordSamples`, `recordConfusions`, `recordTransitions`,
-  `recordSnapshot`, `setCurrentLesson`) still drop the write result. They claim
-  nothing to the user, and `storage.set` raises its own error notification, so
-  only the paths that report a result read it.
+  refused write is invisible the way it used to be for `useLocalStorage`. Its
+  only caller is the result filters in `states/result-filters.ts`, which report
+  nothing, so it is left alone.
+- The paths that store without reporting still drop the write result:
+  `recordSamples`, `recordConfusions`, `recordTransitions`, `recordSnapshot`,
+  `setCurrentLesson`, `setSnapshot` and `setActiveLesson` in session.ts, and
+  the `reset*` family. They claim nothing to the user, and `storage.set` raises
+  its own error notification, so only the paths that report a result read it.
 - The layout emulator has no dead-key state, so the French track works on the OS
   layout only. `lessonAvailable` hides it everywhere else; not planned to change.
 

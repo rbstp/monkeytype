@@ -73,9 +73,7 @@ export function parseBackup(json: string): Backup | undefined {
   }
 }
 
-export function importBackup(json: string): boolean {
-  const backup = parseBackup(json);
-  if (backup === undefined) return false;
+export function importParsedBackup(backup: Backup): boolean {
   // every store is written, then the refusals are counted, so a full store is
   // reported as the failure it is instead of a success it does not hold
   return [
@@ -85,4 +83,9 @@ export function importBackup(json: string): boolean {
     replaceTransitions(backup.transitions ?? { version: 1, layouts: {} }),
     replaceKeyHistory(backup.keyHistory ?? { version: 1, layouts: {} }),
   ].every(Boolean);
+}
+
+export function importBackup(json: string): boolean {
+  const backup = parseBackup(json);
+  return backup !== undefined && importParsedBackup(backup);
 }

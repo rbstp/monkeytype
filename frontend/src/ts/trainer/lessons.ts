@@ -1235,37 +1235,46 @@ function announceRepairs(repairs: UnlockRepair[], anyway = false): void {
 /**
  * Re-evaluates the stored attempts against the current criteria, so a change to
  * the criteria applies to lessons already practised instead of only to the next
- * test.
+ * test. Returns what to store rather than storing it, so a caller can put the
+ * sync and its own changes into one write.
  */
-function syncUnlocked(announceAnyway = false): void {
-  const criteria = criteriaFor(Config.trainerUnlock);
+function syncedProgress(
+  current: Progress,
+  criteria: UnlockCriteria,
+): { next: Progress; repairs: UnlockRepair[] } {
+  const layouts = new Set([
+    ...Object.keys(current.layouts),
+    ...current.attempts.map((attempt) => attempt.layout),
+  ]);
   const repairs: UnlockRepair[] = [];
-  setProgress((current) => {
-    const layouts = new Set([
-      ...Object.keys(current.layouts),
-      ...current.attempts.map((attempt) => attempt.layout),
-    ]);
-    let next = current;
-    for (const layout of layouts) {
-      next = updateLayout(next, layout, (entry) => {
-        const unlocked = unlockedAfterSync(
-          current.attempts,
-          layout,
-          entry.unlocked,
-          criteria,
-        );
-        if (unlocked === entry.unlocked) return entry;
-        // walking a pointer the list still resolves is ordinary progress
-        if (lessonIndex(entry.unlocked) === -1) {
-          repairs.push({ layout, unlocked });
-        }
-        return { ...entry, unlocked };
-      });
-    }
-    return next;
-  });
+  let next = current;
+  for (const layout of layouts) {
+    next = updateLayout(next, layout, (entry) => {
+      const unlocked = unlockedAfterSync(
+        current.attempts,
+        layout,
+        entry.unlocked,
+        criteria,
+      );
+      if (unlocked === entry.unlocked) return entry;
+      // walking a pointer the list still resolves is ordinary progress
+      if (lessonIndex(entry.unlocked) === -1) {
+        repairs.push({ layout, unlocked });
+      }
+      return { ...entry, unlocked };
+    });
+  }
+  return { next, repairs };
+}
+
+function syncUnlocked(): void {
+  const { next, repairs } = syncedProgress(
+    progress(),
+    criteriaFor(Config.trainerUnlock),
+  );
+  setProgress(next);
   // a refused write leaves the pointer as it was, so there is nothing to say
-  if (wroteProgress()) announceRepairs(repairs, announceAnyway);
+  if (wroteProgress()) announceRepairs(repairs);
 }
 
 configEvent.subscribe(({ key }) => {
@@ -1352,14 +1361,14 @@ export function resetProgress(): void {
 }
 
 export function replaceProgress(data: Progress): boolean {
-  setProgress(data);
+  // the repair reads the list the import carried, before the caps drop the
+  // oldest of it, and one write means a refusal cannot half-apply the import
+  const { next, repairs } = syncedProgress(
+    data,
+    criteriaFor(Config.trainerUnlock),
+  );
+  setProgress({ ...next, attempts: trimAttempts(next.attempts) });
   if (!wroteProgress()) return false;
-  // a repair walks the attempts from the first lesson, so it reads the list
-  // the import carried before the caps drop the oldest of it
-  syncUnlocked(true);
-  setProgress((current) => ({
-    ...current,
-    attempts: trimAttempts(current.attempts),
-  }));
-  return wroteProgress();
+  announceRepairs(repairs, true);
+  return true;
 }

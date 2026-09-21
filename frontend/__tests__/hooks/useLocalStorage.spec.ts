@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { createRoot } from "solid-js";
 import { z } from "zod";
 import { useLocalStorage } from "../../src/ts/hooks/useLocalStorage";
+import { withRefusedWrites } from "../__harness__/refused-writes";
 
 const key = "useLocalStorageSpec";
 const schema = z.object({ count: z.number() });
@@ -11,20 +12,15 @@ function stored(): unknown {
   return JSON.parse(localStorage.getItem(key) ?? "null");
 }
 
-// a refused write, scoped to the call: an assertion failure must not leave
-// every later write throwing, and vi.restoreAllMocks does not undo a spy on
-// the storage proxy
-function withRefusedWrites<T>(run: () => T): T {
-  const setItem = vi
-    .spyOn(window.localStorage, "setItem")
-    .mockImplementation(() => {
-      throw new Error("exceeded the quota");
-    });
-  try {
-    return run();
-  } finally {
-    setItem.mockRestore();
-  }
+// a failed assertion must not leak the root and its storage listener
+function rooted(run: () => void): void {
+  createRoot((dispose) => {
+    try {
+      run();
+    } finally {
+      dispose();
+    }
+  });
 }
 
 describe("useLocalStorage", () => {
@@ -33,28 +29,26 @@ describe("useLocalStorage", () => {
   });
 
   it("starts from the fallback and writes what it is set to", () => {
-    createRoot((dispose) => {
+    rooted(() => {
       const [value, setValue] = useLocalStorage({ key, schema, fallback });
       expect(value()).toEqual({ count: 0 });
       setValue({ count: 3 });
       expect(value()).toEqual({ count: 3 });
       expect(stored()).toEqual({ count: 3 });
-      dispose();
     });
   });
 
   it("reads the stored value over the fallback", () => {
     localStorage.setItem(key, JSON.stringify({ count: 7 }));
-    createRoot((dispose) => {
+    rooted(() => {
       const [value] = useLocalStorage({ key, schema, fallback });
       expect(value()).toEqual({ count: 7 });
-      dispose();
     });
   });
 
   it("migrates a stored value the schema rejects", () => {
     localStorage.setItem(key, JSON.stringify({ count: "7" }));
-    createRoot((dispose) => {
+    rooted(() => {
       const [value] = useLocalStorage({
         key,
         schema,
@@ -63,12 +57,11 @@ describe("useLocalStorage", () => {
       });
       expect(value()).toEqual({ count: 7 });
       expect(stored()).toEqual({ count: 7 });
-      dispose();
     });
   });
 
   it("keeps the value it had when the write is rejected", () => {
-    createRoot((dispose) => {
+    rooted(() => {
       const [value, setValue, wrote] = useLocalStorage({
         key,
         schema,
@@ -89,12 +82,11 @@ describe("useLocalStorage", () => {
       expect(wrote()).toBe(false);
       expect(value()).toEqual({ count: 2 });
       expect(stored()).toEqual({ count: 2 });
-      dispose();
     });
   });
 
   it("resolves an updater exactly once", () => {
-    createRoot((dispose) => {
+    rooted(() => {
       const [value, setValue] = useLocalStorage({ key, schema, fallback });
       let calls = 0;
       // callers collect into the updater and read what they collected once the
@@ -106,7 +98,6 @@ describe("useLocalStorage", () => {
       expect(calls).toBe(1);
       expect(value()).toEqual({ count: 1 });
       expect(stored()).toEqual({ count: 1 });
-      dispose();
     });
   });
 });
