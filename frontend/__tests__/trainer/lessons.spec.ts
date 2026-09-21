@@ -391,12 +391,77 @@ describe("lessons", () => {
       const table = bigramTable(["said"], ["a", "s", "d"]);
       expect(table.next["s"]).toEqual({ a: 1 });
       expect(table.next["a"]).toBeUndefined();
-      expect(table.next["d"]).toEqual({ "": 1 });
+      expect(table.next["d"]).toBeUndefined();
+    });
+
+    it("counts a word end only when the character before it is allowed too", () => {
+      expect(bigramTable(["aid"], ["a", "d"]).next["d"]).toBeUndefined();
+      expect(bigramTable(["ad"], ["a", "d"]).next["d"]).toEqual({ "": 1 });
+      expect(bigramTable(["a"], ["a"]).next["a"]).toBeUndefined();
     });
   });
 
   describe("buildLessonWords", () => {
     const options = { random: seeded(42), count: 40 };
+
+    // bigramTable walks the corpus with for..of while the real-word filter
+    // goes by index, so a counted iterator sees the table build and nothing else
+    const countingCorpus = (
+      words: string[],
+    ): { words: string[]; walks: () => number } => {
+      let walks = 0;
+      const corpus = [...words];
+      Object.defineProperty(corpus, Symbol.iterator, {
+        value: function (this: string[]): IterableIterator<string> {
+          walks++;
+          return Array.prototype[Symbol.iterator].call(this);
+        },
+      });
+      return { words: corpus, walks: () => walks };
+    };
+    const alphabet = [..."abcdefghijklmnopqrstuvwxyz"];
+    const plenty = Array.from({ length: 40 }, (_unused, index) =>
+      `word${index}`.replace(
+        /\d/g,
+        (digit) => alphabet[Number(digit)] as string,
+      ),
+    );
+
+    it("leaves the bigram table unbuilt when no filler is drawn", () => {
+      const corpus = countingCorpus(plenty);
+      const words = buildLessonWords(
+        corpus.words,
+        { allowed: alphabet, fresh: [] },
+        { count: 40, random: seeded(7) },
+      );
+      expect(words).toHaveLength(40);
+      expect(corpus.walks()).toBe(0);
+    });
+
+    it("builds the bigram table once on the first filler", () => {
+      const corpus = countingCorpus(["as", "lad"]);
+      const words = buildLessonWords(
+        corpus.words,
+        { allowed: alphabet, fresh: [] },
+        { count: 40, random: seeded(7) },
+      );
+      expect(words).toHaveLength(40);
+      expect(corpus.walks()).toBe(1);
+    });
+
+    it("takes a ready table without walking the corpus", () => {
+      const corpus = countingCorpus(["as", "lad"]);
+      buildLessonWords(
+        corpus.words,
+        { allowed: alphabet, fresh: [] },
+        {
+          count: 40,
+          random: seeded(7),
+          bigrams: bigramTable(["as", "lad"], alphabet),
+        },
+      );
+      expect(corpus.walks()).toBe(0);
+    });
 
     it("only uses allowed characters and keeps lengths in range", () => {
       const chars = lessonChars(0, qwerty);

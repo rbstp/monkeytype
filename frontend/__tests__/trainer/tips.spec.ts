@@ -68,7 +68,7 @@ describe("tips", () => {
     expect(tips).toHaveLength(3);
   });
 
-  it("puts the transition before the keys and keeps three tips", () => {
+  it("keeps the slowest keys ahead of the transition within the three tips", () => {
     const tips = buildTips({
       acc: 98,
       fingers: fingers(),
@@ -76,10 +76,25 @@ describe("tips", () => {
       transitions: [{ prev: "a", key: "s", kind: "same hand", emaMs: 300 }],
     });
     expect(tips).toHaveLength(3);
-    expect(tips[1]).toBe(
+    expect(tips[1]).toContain("Slowest keys: l 1.8s");
+    expect(tips[2]).toBe(
       "a then s takes 300 ms (same hand): one hand carries both keys, so keep the other hand home and roll the pair in one motion.",
     );
-    expect(tips[2]).toContain("Slowest keys: l 1.8s");
+  });
+
+  it("drops the transition rather than the slowest keys once three tips are full", () => {
+    const tips = buildTips({
+      acc: 90,
+      fingers: fingers(),
+      weakKeys: [key({})],
+      confusions: [
+        { expected: "d", typed: "k", kind: "mirror hand", count: 5 },
+      ],
+      transitions: [{ prev: "a", key: "s", kind: "same hand", emaMs: 300 }],
+    });
+    expect(tips).toHaveLength(3);
+    expect(tips.some((tip) => tip.includes("Slowest keys"))).toBe(true);
+    expect(tips.some((tip) => tip.includes("takes 300 ms"))).toBe(false);
   });
 
   it("skips the transition tip without transitions", () => {

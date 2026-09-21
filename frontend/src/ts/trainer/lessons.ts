@@ -361,7 +361,15 @@ export function bigramTable(words: string[], allowed: string[]): Bigrams {
     if (first !== undefined && letters.has(first)) {
       starts[first] = (starts[first] ?? 0) + 1;
     }
-    if (last !== undefined && letters.has(last)) add(last, wordEnd);
+    const beforeLast = chars[chars.length - 2];
+    if (
+      last !== undefined &&
+      beforeLast !== undefined &&
+      letters.has(last) &&
+      letters.has(beforeLast)
+    ) {
+      add(last, wordEnd);
+    }
     for (let i = 1; i < chars.length; i++) {
       const from = chars[i - 1] as string;
       const to = chars[i] as string;
@@ -505,6 +513,7 @@ function pseudoWord(
   symbols: string[],
   fresh: Set<string>,
   options: WordOptions,
+  bigramsOf: () => Bigrams,
 ): string {
   const length =
     options.minLength +
@@ -518,7 +527,7 @@ function pseudoWord(
     : 0;
 
   const letterCount = length - symbolCount;
-  const bigrams = options.bigrams;
+  const bigrams = letterCount === 0 ? undefined : bigramsOf();
   let word =
     bigrams === undefined || bigrams.pairs < minBigrams
       ? undefined
@@ -555,7 +564,11 @@ export function buildLessonWords(
   overrides: Partial<WordOptions> = {},
 ): string[] {
   const options = { ...defaultWordOptions, ...overrides };
-  options.bigrams ??= bigramTable(realWords, chars.allowed);
+  // the ladder almost never reaches a filler, and the table costs a pass over
+  // the whole corpus, so it is built on the first draw rather than every call
+  let table = options.bigrams;
+  const bigramsOf = (): Bigrams =>
+    (table ??= bigramTable(realWords, chars.allowed));
   const allowed = new Set(chars.allowed);
   const fresh = new Set(chars.fresh);
   const freshSymbols = chars.fresh.filter((char) => !isLetter(char));
@@ -604,7 +617,7 @@ export function buildLessonWords(
       (real.length >= options.minReal || options.random() < 0.3);
     const word = useReal
       ? (drawReal() ?? "")
-      : pseudoWord(letters, freshSymbols, fresh, options);
+      : pseudoWord(letters, freshSymbols, fresh, options, bigramsOf);
     if (word === "") break;
     words.push(word);
   }
@@ -613,7 +626,7 @@ export function buildLessonWords(
   const isUpper = (char: string): boolean =>
     isLetter(char) && lower(char) !== char;
   const pseudoWith = (char: string): string => {
-    const pseudo = pseudoWord(letters, freshSymbols, fresh, options);
+    const pseudo = pseudoWord(letters, freshSymbols, fresh, options, bigramsOf);
     if (isUpper(char)) return char + lower(pseudo.slice(1));
     if (pseudo.includes(char)) return pseudo;
     const at = Math.floor(options.random() * (pseudo.length + 1));

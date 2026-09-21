@@ -88,7 +88,11 @@ type FinishedFlags = {
   countsForLesson?: boolean;
 };
 
-function finished(targetWords: string[], flags: FinishedFlags = {}): void {
+function finished(
+  targetWords: string[],
+  flags: FinishedFlags = {},
+  commits = 0,
+): void {
   const eventLog: EventLog = {
     version: 1,
     events: [
@@ -104,6 +108,19 @@ function finished(targetWords: string[], flags: FinishedFlags = {}): void {
           inputValue: "",
         },
       },
+      ...Array.from({ length: commits }, (_unused, index) => ({
+        type: "input" as const,
+        testMs: 200 + index * 100,
+        data: {
+          inputType: "insertText" as const,
+          data: " ",
+          correct: true,
+          commitsWord: true as const,
+          wordIndex: index,
+          charIndex: 1,
+          inputValue: "",
+        },
+      })),
     ],
     context: {
       targetWords,
@@ -847,11 +864,11 @@ describe("trainer session", () => {
         words.some((word) => [...word].some((char) => !homeRow.has(char))),
       ).toBe(true);
 
-      finished(["sad "]);
+      finished(["sad "], {}, 3);
       await flush();
       expect(progress().attempts).toHaveLength(0);
       expect(getKeyStats().layouts["qwerty"]?.["KeyS"]?.total).toBe(1);
-      expect(noticeMock).toHaveBeenCalledWith("warm-up done, 20 words", {
+      expect(noticeMock).toHaveBeenCalledWith("warm-up done, 3 words", {
         durationMs: 8000,
       });
     });

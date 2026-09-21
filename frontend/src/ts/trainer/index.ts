@@ -77,7 +77,7 @@ export function onTestFinished(test: FinishedTest): void {
       if (drill !== null && recordKeys) {
         showNoticeNotification(
           drill.kind === "warm-up"
-            ? warmUpSummary(test.completedEvent)
+            ? warmUpSummary(test.eventLog)
             : drillSummary(
                 drill,
                 getLayoutStats(statsName),

@@ -34,6 +34,8 @@ does work`. Decisions that shaped it are in
   and `classifyConfusion` name the worst confusion pairs, and `worstTransitions`
   and `classifyTransition` name the one-handed pairs running at least half again
   the layout's median. The weak-keys panel and `buildTips` show all three.
+  `buildTips` keeps three tips and orders them accuracy, rhythm, confusion,
+  keys, transition, so one slow pair no longer displaces the slowest keys.
 - Unlocks read the configured floor through `criteriaFor`. `masteryOf` pools
   `perKey` over the last three attempts, so a new key needs its share of a
   sample budget and at most 3% errors before `unlockStatus` says ok, and the
@@ -48,13 +50,20 @@ does work`. Decisions that shaped it are in
   lesson test. `pseudoWord` fills the gaps by walking the `bigramTable` of the
   corpus, and falls back to alternating vowels and consonants when the allowed
   letters carry fewer than fifty pairs, which is where the home row sits. The
-  ladder rarely needs a filler at all, so the walk mostly serves the drill.
+  ladder rarely needs a filler at all, so the walk mostly serves the drill and
+  the table is built on the first filler rather than on every call;
+  `WordOptions.bigrams` still takes the ready table the drill passes. A word end
+  counts only when the character before it is allowed too, the rule a letter
+  pair already followed.
 - `startSession` in session.ts prepares any custom test from a word pool, and
   its `Drill.kind` tells the three targeted sessions apart. `startDrill` runs 30
   seconds on the three worst keys, `startReview` on the unlocked keys that
   `reviewKeys` finds slow, error-prone or slower than last week, and
   `startWarmUp` over every character the unlocked lessons teach. None of them
   records a lesson attempt, shows the chip, or lets `rebuildLessonWords` run.
+  `warmUpSummary` counts the words committed in the event log, not wpm over the
+  clock, which measured five-character units; the word in progress when the
+  clock runs out was never committed, so it is not counted.
 - The config cannot leak: lifecycle.ts sets the store before it fires the
   finished event, the persisted config hook in session.ts keeps lesson values
   out of the saved config, and index.ts scores an attempt only when
@@ -152,6 +161,10 @@ does work`. Decisions that shaped it are in
 29. unlock-legibility, say what is holding the lesson. `feat(trainer):
     unlock-legibility, name the blocker on the map and in the picker`:
     `unlockBlocker` is extracted from the result card and read by all three.
+30. polish, the four carry-overs from #8. `fix(trainer): polish, tip order,
+    a lazy bigram table, word ends and the warm-up count`: the slowest keys
+    outrank the transition, the table is built on first use, a word end needs
+    its neighbour allowed, and the warm-up counts committed words.
 
 ## Open
 
