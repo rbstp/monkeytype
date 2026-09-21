@@ -9,6 +9,7 @@ import {
   vi,
 } from "vitest";
 import { LayoutObject } from "@monkeytype/schemas/layouts";
+import { TrainerUnlock } from "@monkeytype/schemas/configs";
 import { setConfigStore } from "../../src/ts/config/store";
 import * as Notifications from "../../src/ts/states/notifications";
 import {
@@ -45,6 +46,7 @@ import {
   trimAttempts,
   unlockBlocker,
   unlockedUpTo,
+  UnlockCriteria,
   unlockStatus,
   UnlockStatus,
   upgradeProgress,
@@ -2097,6 +2099,107 @@ describe("lessons", () => {
       replaceProgress(data);
       expect(progress().layouts["qwerty"]?.unlocked).toBe("r-u");
       expect(progress().layouts["dvorak"]?.unlocked).toBe("e-i");
+    });
+  });
+
+  describe("ladder reachability", () => {
+    // what a real window gives one key, derived here rather than read from the
+    // budget under test
+    const windowShare = (wordsPerTest: number, width: number): number =>
+      Math.max(1, Math.floor((3 * wordsPerTest * 2) / (3 * width)));
+
+    const feed = (
+      lesson: Lesson,
+      layout: LayoutObject,
+      layoutName: string,
+      criteria: UnlockCriteria,
+      wordsPerTest: number,
+    ): Attempt[] => {
+      const keys = lessonKeycodes(lesson, layout);
+      const pooled = windowShare(wordsPerTest, Math.max(1, keys.length));
+      return Array.from({ length: 3 }, (_, round) => ({
+        lesson: lesson.id,
+        layout: layoutName,
+        wpm: criteria.minWpm,
+        acc: criteria.minAcc,
+        perKey: Object.fromEntries(
+          keys.map((keycode) => [
+            keycode,
+            {
+              total: Math.floor(pooled / 3) + (round < pooled % 3 ? 1 : 0),
+              errors: 0,
+            },
+          ]),
+        ),
+        ts: round,
+      }));
+    };
+
+    beforeEach(() => {
+      setConfigStore("layout", "default");
+    });
+
+    afterEach(() => {
+      setConfigStore("layout", "default");
+      setConfigStore("keymapLayout", "overrideSync");
+      setConfigStore("trainerUnlock", "normal");
+      setConfigStore("trainerWordsPerTest", 40);
+    });
+
+    it("passes every lesson at every unlock setting and test length", () => {
+      const layouts: [string, LayoutObject][] = [
+        ["qwerty", qwerty],
+        ["canadian_french", canadianFrench],
+      ];
+      const unlocks: TrainerUnlock[] = ["relaxed", "normal", "strict"];
+      const lengths = [10, 25, 40, 100, 200];
+      const unreachable: string[] = [];
+      let checked = 0;
+
+      for (const [layoutName, layout] of layouts) {
+        setConfigStore(
+          "keymapLayout",
+          layoutName === "qwerty" ? "overrideSync" : "canadian_french",
+        );
+        for (const unlock of unlocks) {
+          setConfigStore("trainerUnlock", unlock);
+          const criteria = criteriaFor(unlock);
+          for (const wordsPerTest of lengths) {
+            setConfigStore("trainerWordsPerTest", wordsPerTest);
+            for (const lesson of LESSONS) {
+              if (!lessonAvailable(lesson, layoutName)) continue;
+              checked++;
+              const attempts = feed(
+                lesson,
+                layout,
+                layoutName,
+                criteria,
+                wordsPerTest,
+              );
+              const status = unlockStatus(
+                attempts,
+                lesson.id,
+                layoutName,
+                criteria,
+              );
+              if (!status.ok) {
+                const weak = status.weakKeys[0];
+                unreachable.push(
+                  `${layoutName} ${unlock} ${wordsPerTest} words ${lesson.id}: ${
+                    weak === undefined
+                      ? `phase ${status.phase}`
+                      : `${weak.keycode} has ${weak.samples} of ${weak.required}`
+                  }`,
+                );
+              }
+            }
+          }
+        }
+      }
+
+      expect(unreachable).toEqual([]);
+      // 18 lessons on qwerty and 22 on canadian_french, over 3 settings and 5 lengths
+      expect(checked).toBe(15 * (18 + 22));
     });
   });
 });

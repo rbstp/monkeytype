@@ -46,6 +46,10 @@ does work`. Decisions that shaped it are in
   holds. The card and the chip show only what the phase asks for.
   `masterySamplesFor` scales that budget with `trainerWordsPerTest` and caps it
   at what three attempts can show, since the window rolls rather than adds up.
+  A table in lessons.spec.ts walks the whole ladder for every `trainerUnlock`
+  crossed with the test lengths from the schema floor to its ceiling, on qwerty
+  and canadian_french, so a budget that asks for more than the window can hold
+  fails a spec instead of locking a lesson for good.
 - Lessons read real words. `largestCorpus` loads english_10k,
   `buildLessonWords` draws by damped rank when the corpus is ordered by
   frequency and never mutates a real word, the 120-word pool is weighted by
@@ -199,6 +203,11 @@ does work`. Decisions that shaped it are in
     `recordAttempt` decides for itself what an unresolvable unlock id means and
     reports the pointer it rebuilds.
 
+35. ladder-reachability. `test(trainer): ladder-reachability, walk the ladder
+    at every setting`: one table over the three unlock settings, five test
+    lengths and two layouts, feeding each lesson the share of the window a real
+    pool delivers, so the arithmetic step 27 fixed cannot rot.
+
 ## Open
 
 - The layout emulator has no dead-key state, so the French track works on the OS
@@ -216,13 +225,13 @@ Standing requirements, carry these into every step
 - No code comments unless a line would be misread without one. When needed, one
   short line saying why, never what. JSDoc blocks that restate a signature count
   as comments.
-- Steps 28 to 31 go on one branch from `trainer` at the merge of #8 or later,
-  one commit per step (28 and 30 are `fix(trainer): ...`, 29 a `feat(trainer):
-  ...`, 31 a `test(trainer): ...`), each step validated (specs, typecheck, lint,
+- Steps 32 to 35 go on one branch from `trainer` at the merge of #9 or later,
+  one commit per step (32 and 33 are `feat(trainer): ...`, 34 a `fix(trainer):
+  ...`, 35 a `test(trainer): ...`), each step validated (specs, typecheck, lint,
   format, madge, headless Chromium where the step touches the UI) and its
   roadmap lines updated before the next step starts. Do not open a PR between
   steps.
-- Once step 31 is committed, spawn a subagent with model opus to review the full
+- Once step 35 is committed, spawn a subagent with model opus to review the full
   branch diff against origin/trainer. Ask it to check correctness, any behaviour
   change when no lesson, drill, warm-up or review is active, missing test
   coverage, whether the roadmap still describes the code, and violations of the
