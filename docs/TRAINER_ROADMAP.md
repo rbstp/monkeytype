@@ -60,7 +60,8 @@ does work`. Decisions that shaped it are in
   progress, confusions, transitions and the key history.
 - The trainer page shows the lesson map, a continue button, an attempts chart
   against the configured floors, a per-lesson table and the key changes from
-  `keyDeltas`. `heatColors` tints the keymap's border ring by speed or errors.
+  `keyDeltas`, which reads a cutoff `daysBefore` counts in calendar days.
+  `heatColors` tints the keymap's border ring by speed or errors.
 
 ## Done
 
@@ -125,12 +126,12 @@ does work`. Decisions that shaped it are in
 25. targeted-practice, warm-up and review. `feat(trainer): targeted-practice,
     a warm-up and a review beside the drill`: `startWarmUp` and `startReview`
     over a `Drill.kind`, with commands, actions and page buttons.
+26. hardening, calendar days. `fix(trainer): hardening, count calendar days in
+    the key history`: `daysBefore` shifts a local date instead of subtracting a
+    fixed day length.
 
 ## Open
 
-- Calendar days in history.ts. `daysBefore` subtracts a fixed day length from a
-  local midnight, so the 90-day prune and the 7-day delta cutoff land a day out
-  across a DST change. Subtract calendar days instead.
 - The layout emulator has no dead-key state, so the French track works on the OS
   layout only. `lessonAvailable` hides it everywhere else; not planned to change.
 
