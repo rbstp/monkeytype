@@ -7,8 +7,12 @@ import { beginLesson } from "../../../trainer/actions";
 import {
   criteriaFor,
   Lesson,
+  lessonKeyLegend,
+  lessonName,
+  lessonNumber,
   LESSONS,
   masteryErrorRate,
+  nextLesson,
   progress,
   progressLayout,
   unlockedUpTo,
@@ -16,7 +20,6 @@ import {
   WeakKey,
 } from "../../../trainer/lessons";
 import { getActiveLesson } from "../../../trainer/session";
-import { keycodeToLayoutKey } from "../../../utils/key-converter";
 import { Button } from "../../common/Button";
 
 type Active = { index: number; lesson: Lesson };
@@ -32,12 +35,22 @@ export function LessonResultCard(): JSXElement {
 
   const legend = (key: WeakKey): string => {
     const layout = inputLayoutObject();
+    const lesson = active()?.lesson;
     const label =
-      layout === undefined
+      layout === undefined || lesson === undefined
         ? undefined
-        : keycodeToLayoutKey(key.keycode, layout, active()?.lesson.layer ?? 0);
+        : lessonKeyLegend(lesson, key.keycode, layout);
     return label ?? key.keycode;
   };
+
+  const next = (): number | undefined => {
+    const current = active();
+    return current === undefined
+      ? undefined
+      : nextLesson(current.index, progressLayout());
+  };
+  const hasNext = (): boolean => next() !== undefined;
+  const locked = (): boolean => unlockedUpTo() < (next() ?? Infinity);
 
   const line = createMemo((): string => {
     const current = active();
@@ -57,27 +70,28 @@ export function LessonResultCard(): JSXElement {
     }
     const status = unlockStatus(attempts, current.lesson.id, layout, criteria);
     if (status.ok) {
-      return current.index + 1 < LESSONS.length
-        ? `lesson ${current.index + 2} unlocked`
-        : "lesson passed";
+      const index = next();
+      const following = index === undefined ? undefined : LESSONS[index];
+      return index === undefined || following === undefined
+        ? "lesson passed"
+        : `lesson ${lessonNumber(index, layout)} unlocked: ${lessonName(following, inputLayoutObject())}`;
     }
-    if (status.wpmShort > 0) {
-      return `${Math.round(latest.wpm)} wpm, ${status.wpmShort} short of ${criteria.minWpm}`;
+    const accLine = `accuracy ${Math.floor(latest.acc)}%, ${status.accShort} short of ${criteria.minAcc}%`;
+    if (status.phase === "speed") {
+      if (status.wpmShort > 0) {
+        return `speed phase: ${Math.round(latest.wpm)} wpm, ${status.wpmShort} short of ${criteria.minWpm}`;
+      }
+      if (status.accShort > 0) return `speed phase: ${accLine}`;
+      return "speed phase: pass once more to unlock";
     }
-    if (status.accShort > 0) {
-      return `accuracy ${Math.floor(latest.acc)}%, ${status.accShort} short of ${criteria.minAcc}%`;
-    }
+    if (status.accShort > 0) return `accuracy phase: ${accLine}`;
     const weak = status.weakKeys[0];
-    if (weak === undefined) return "passed the bar, pass once more to unlock";
+    if (weak === undefined) return "accuracy phase";
     if (weak.samples < weak.required) {
-      return `passed the bar, ${legend(weak)} needs ${weak.required - weak.samples} more samples`;
+      return `accuracy phase: ${legend(weak)} needs ${weak.required - weak.samples} more samples`;
     }
-    return `passed the bar, ${legend(weak)} has ${weak.errors} errors in ${weak.samples} samples, above ${masteryErrorRate * 100}%`;
+    return `accuracy phase: ${legend(weak)} errs ${Math.round((weak.errors / weak.samples) * 100)}%, bar ${masteryErrorRate * 100}%`;
   });
-
-  const next = (): number => (active()?.index ?? -1) + 1;
-  const hasNext = (): boolean => next() < LESSONS.length;
-  const locked = (): boolean => unlockedUpTo() < next();
 
   return (
     <Show when={line() !== ""}>
@@ -99,7 +113,7 @@ export function LessonResultCard(): JSXElement {
               text="next"
               class="px-4 py-2"
               disabled={locked()}
-              onClick={() => void beginLesson(next())}
+              onClick={() => void beginLesson(next() ?? 0)}
             />
           </Show>
         </span>

@@ -12,13 +12,21 @@ import {
   currentLesson,
   defaultCriteria,
   lessonChars,
+  lessonAvailable,
   lessonIndex,
+  LESSON_IDS_V2,
+  lessonKeycodes,
+  lessonKeyLegend,
+  lessonName,
+  lessonNumber,
   LESSONS,
   masteryOf,
+  nextLesson,
   masterySamplesFor,
   progress,
   Progress,
   ProgressV1,
+  ProgressV2,
   recordAttempt,
   replaceProgress,
   resetProgress,
@@ -40,12 +48,20 @@ function mastered(id: string, samples = 20): Attempt["perKey"] {
   );
 }
 
-const qwerty = JSON.parse(
-  readFileSync(
-    `${import.meta.dirname}/../../static/layouts/qwerty.json`,
-    "utf-8",
-  ),
-) as LayoutObject;
+function readLayout(name: string): LayoutObject {
+  return JSON.parse(
+    readFileSync(
+      `${import.meta.dirname}/../../static/layouts/${name}.json`,
+      "utf-8",
+    ),
+  ) as LayoutObject;
+}
+
+const qwerty = readLayout("qwerty");
+const dvorak = readLayout("dvorak");
+const azerty = readLayout("azerty");
+const colemak = readLayout("colemak");
+const canadianFrench = readLayout("canadian_french");
 
 function seeded(seed: number): () => number {
   let state = seed;
@@ -55,10 +71,8 @@ function seeded(seed: number): () => number {
   };
 }
 
-const capitals = LESSONS.findIndex((lesson) => lesson.name === "capitals");
-const punctuation = LESSONS.findIndex(
-  (lesson) => lesson.name === "punctuation",
-);
+const capitals = lessonIndex("capitals-left");
+const punctuation = lessonIndex("quote-minus");
 
 function capitalised(word: string): string {
   return word.charAt(0).toUpperCase() + word.slice(1);
@@ -82,17 +96,94 @@ describe("lessons", () => {
         "b-n",
         "x-period",
         "z-slash",
-        "capitals",
-        "punctuation",
+        "capitals-left",
+        "capitals-right",
+        "quote-minus",
+        "equal-brackets",
+        "shifted-punctuation",
+        "accents-direct",
+        "accents-grave",
+        "accents-circumflex",
+        "accents-diaeresis",
         "numbers",
       ]);
       for (const id of ids) expect(/^[a-z]+(-[a-z]+)*$/.test(id)).toBe(true);
     });
 
+    it("keeps the v2 list frozen", () => {
+      expect(LESSON_IDS_V2).toEqual([
+        ...LESSONS.slice(0, 12).map((lesson) => lesson.id),
+        "capitals",
+        "punctuation",
+        "numbers",
+      ]);
+    });
+
     it("resolves an id back to its index", () => {
       expect(lessonIndex("home-row")).toBe(0);
-      expect(lessonIndex("capitals")).toBe(capitals);
+      expect(lessonIndex("capitals-left")).toBe(capitals);
       expect(lessonIndex("missing")).toBe(-1);
+    });
+
+    it("splits the capitals by hand and covers every letter once", () => {
+      const left = LESSONS[capitals]?.newKeys ?? [];
+      const right = LESSONS[lessonIndex("capitals-right")]?.newKeys ?? [];
+      expect(left).toEqual([
+        "KeyA",
+        "KeyB",
+        "KeyC",
+        "KeyD",
+        "KeyE",
+        "KeyF",
+        "KeyG",
+        "KeyQ",
+        "KeyR",
+        "KeyS",
+        "KeyT",
+        "KeyV",
+        "KeyW",
+        "KeyX",
+        "KeyZ",
+      ]);
+      expect(right).toEqual([
+        "KeyH",
+        "KeyI",
+        "KeyJ",
+        "KeyK",
+        "KeyL",
+        "KeyM",
+        "KeyN",
+        "KeyO",
+        "KeyP",
+        "KeyU",
+        "KeyY",
+      ]);
+      expect([...left, ...right].sort()).toEqual(
+        [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"].map((letter) => `Key${letter}`),
+      );
+      expect(lessonChars(capitals, qwerty).fresh.join("")).toBe(
+        "ABCDEFGQRSTVWXZ",
+      );
+    });
+
+    it("lays the punctuation ladder out in three steps", () => {
+      expect(LESSONS[lessonIndex("quote-minus")]).toEqual({
+        id: "quote-minus",
+        name: "' -",
+        newKeys: ["Quote", "Minus"],
+      });
+      expect(LESSONS[lessonIndex("equal-brackets")]).toEqual({
+        id: "equal-brackets",
+        name: "= [ ]",
+        newKeys: ["Equal", "BracketLeft", "BracketRight"],
+      });
+      expect(LESSONS[lessonIndex("shifted-punctuation")]).toMatchObject({
+        newKeys: ["Comma", "Period", "Slash", "Semicolon", "Quote", "Minus"],
+        layer: 1,
+      });
+      expect(
+        lessonChars(lessonIndex("shifted-punctuation"), qwerty).fresh,
+      ).toEqual(["<", ">", "?", ":", '"', "_"]);
     });
   });
 
@@ -112,6 +203,171 @@ describe("lessons", () => {
       const chars = lessonChars(capitals, qwerty);
       expect(chars.fresh).toContain("A");
       expect(chars.allowed).toContain("a");
+    });
+
+    it("resolves the accents track through direct legends and dead keys", () => {
+      const direct = lessonIndex("accents-direct");
+      const grave = lessonIndex("accents-grave");
+      expect(lessonChars(direct, canadianFrench).fresh).toEqual(["é", "ç"]);
+      expect(lessonChars(grave, canadianFrench).fresh).toEqual(["è", "à", "ù"]);
+      expect(lessonChars(grave, canadianFrench).allowed).toContain("é");
+      expect(
+        lessonChars(lessonIndex("accents-diaeresis"), canadianFrench).fresh,
+      ).toEqual(["ë", "ï", "ü"]);
+      expect(lessonChars(grave, qwerty).fresh).toEqual([]);
+      expect(lessonChars(lessonIndex("numbers"), qwerty).allowed).not.toContain(
+        "è",
+      );
+      expect(lessonChars(direct, azerty).fresh).toEqual(["é", "ç"]);
+      expect(lessonChars(grave, azerty).fresh).toEqual(["è", "à", "ù"]);
+      expect(
+        lessonChars(lessonIndex("accents-circumflex"), azerty).fresh,
+      ).toEqual([]);
+    });
+
+    it("offers dead keys on the OS layout only", () => {
+      const grave = lessonIndex("accents-grave");
+      setConfigStore("layout", "canadian_french");
+      expect(lessonChars(grave, canadianFrench).fresh).toEqual([]);
+      expect(
+        lessonChars(lessonIndex("accents-direct"), canadianFrench).fresh,
+      ).toEqual(["é", "ç"]);
+      expect(
+        lessonChars(lessonIndex("numbers"), canadianFrench).allowed,
+      ).not.toContain("è");
+      expect(
+        lessonKeycodes(LESSONS[grave] as (typeof LESSONS)[0], canadianFrench),
+      ).toEqual([]);
+      expect(
+        lessonAvailable(
+          LESSONS[grave] as (typeof LESSONS)[0],
+          "canadian_french",
+        ),
+      ).toBe(false);
+      setConfigStore("layout", "default");
+      expect(lessonChars(grave, canadianFrench).fresh).toEqual(["è", "à", "ù"]);
+      expect(
+        lessonAvailable(
+          LESSONS[grave] as (typeof LESSONS)[0],
+          "canadian_french",
+        ),
+      ).toBe(true);
+    });
+
+    it("counts mastery on the key each character sits on, or its dead key", () => {
+      const grave = LESSONS[
+        lessonIndex("accents-grave")
+      ] as (typeof LESSONS)[0];
+      const direct = LESSONS[
+        lessonIndex("accents-direct")
+      ] as (typeof LESSONS)[0];
+      expect(lessonKeycodes(grave, canadianFrench)).toEqual(["Quote"]);
+      expect(lessonKeycodes(direct, canadianFrench)).toEqual(["Slash", "KeyC"]);
+      expect(lessonKeycodes(grave, qwerty)).toEqual([]);
+      expect(lessonKeycodes(LESSONS[1] as (typeof LESSONS)[0], qwerty)).toEqual(
+        ["KeyE", "KeyI"],
+      );
+    });
+
+    it("resolves digits through the auto layer on any layout", () => {
+      const numbers = lessonIndex("numbers");
+      const digits = [..."1234567890"];
+      expect(lessonChars(numbers, qwerty).fresh).toEqual(digits);
+      expect(lessonChars(numbers, azerty).fresh).toEqual(digits);
+      expect(lessonChars(numbers, colemak).fresh).toEqual(digits);
+      expect(lessonChars(numbers, azerty).allowed).not.toContain("&");
+    });
+  });
+
+  describe("availability", () => {
+    const grave = lessonIndex("accents-grave");
+    const numbers = lessonIndex("numbers");
+    const shifted = lessonIndex("shifted-punctuation");
+
+    it("hides the accents track on layouts without a dead-key table", () => {
+      const graveLesson = LESSONS[grave] as (typeof LESSONS)[0];
+      expect(lessonAvailable(graveLesson, "canadian_french")).toBe(true);
+      expect(lessonAvailable(graveLesson, "qwerty")).toBe(false);
+      expect(lessonAvailable(LESSONS[0] as (typeof LESSONS)[0], "qwerty")).toBe(
+        true,
+      );
+    });
+
+    it("numbers the lessons the layout can type", () => {
+      expect(LESSONS).toHaveLength(22);
+      expect(lessonNumber(0, "qwerty")).toBe(1);
+      expect(lessonNumber(shifted, "qwerty")).toBe(17);
+      expect(lessonNumber(numbers, "qwerty")).toBe(18);
+      expect(lessonNumber(numbers, "canadian_french")).toBe(22);
+      expect(lessonNumber(grave, "canadian_french")).toBe(19);
+    });
+
+    it("steps to the next lesson the layout can type", () => {
+      expect(nextLesson(0, "qwerty")).toBe(1);
+      expect(nextLesson(shifted, "qwerty")).toBe(numbers);
+      expect(nextLesson(shifted, "canadian_french")).toBe(shifted + 1);
+      expect(nextLesson(numbers, "qwerty")).toBeUndefined();
+      expect(nextLesson(numbers, "canadian_french")).toBeUndefined();
+    });
+  });
+
+  describe("lessonName", () => {
+    const named = (id: string, layout?: LayoutObject): string =>
+      lessonName(LESSONS[lessonIndex(id)] as (typeof LESSONS)[0], layout);
+
+    it("derives the two-key and home row names from the layout legends", () => {
+      expect(named("home-row", qwerty)).toBe("a s d f j k l ;");
+      expect(named("home-row", dvorak)).toBe("a o e u h t n s");
+      expect(named("e-i", qwerty)).toBe("e i");
+      expect(named("e-i", dvorak)).toBe(". c");
+      expect(named("c-comma", dvorak)).toBe("j w");
+      expect(named("z-slash", colemak)).toBe("z /");
+    });
+
+    it("keeps the fixed names on every layout", () => {
+      const fixed = {
+        "capitals-left": "capitals left",
+        "capitals-right": "capitals right",
+        "shifted-punctuation": "shifted punctuation",
+        numbers: "numbers",
+      };
+      for (const [id, name] of Object.entries(fixed)) {
+        expect(named(id, qwerty)).toBe(name);
+        expect(named(id, dvorak)).toBe(name);
+      }
+    });
+
+    it("names the accents by the characters the layout can type", () => {
+      expect(named("accents-grave", canadianFrench)).toBe("è à ù");
+      expect(named("accents-grave", qwerty)).toBe("è à ù");
+      expect(named("accents-circumflex", azerty)).toBe("ê â î ô û");
+      expect(named("accents-grave")).toBe("è à ù");
+    });
+
+    it("derives the ladder names from the legends", () => {
+      expect(named("quote-minus", qwerty)).toBe("' -");
+      expect(named("quote-minus", dvorak)).toBe("- [");
+      expect(named("equal-brackets", qwerty)).toBe("= [ ]");
+      expect(named("equal-brackets", dvorak)).toBe("] / =");
+    });
+
+    it("falls back to the qwerty name without a layout", () => {
+      expect(named("e-i")).toBe("e i");
+      expect(named("home-row")).toBe("a s d f j k l ;");
+    });
+  });
+
+  describe("lessonKeyLegend", () => {
+    it("reads the lesson layer, or the first layer that fits the class", () => {
+      const capitalsLesson = LESSONS[capitals] as (typeof LESSONS)[0];
+      const numbers = LESSONS[lessonIndex("numbers")] as (typeof LESSONS)[0];
+      expect(lessonKeyLegend(capitalsLesson, "KeyA", qwerty)).toBe("A");
+      expect(lessonKeyLegend(numbers, "Digit1", azerty)).toBe("1");
+      expect(lessonKeyLegend(numbers, "Digit1", qwerty)).toBe("1");
+      expect(lessonKeyLegend(numbers, "KeyA", qwerty)).toBe("a");
+      expect(
+        lessonKeyLegend(LESSONS[1] as (typeof LESSONS)[0], "KeyE", dvorak),
+      ).toBe(".");
     });
   });
 
@@ -232,6 +488,74 @@ describe("lessons", () => {
       });
     });
 
+    describe("weights", () => {
+      const chars = lessonChars(0, qwerty);
+      const real = [
+        "as",
+        "ad",
+        "sad",
+        "lad",
+        "fall",
+        "all",
+        "ask",
+        "dad",
+        "lass",
+        "flask",
+      ];
+      const count = (words: string[], char: string): number =>
+        words.filter((word) => word.includes(char)).length;
+
+      it("draws words with heavy characters more often", () => {
+        const plain = buildLessonWords(real, chars, {
+          count: 600,
+          minReal: 5,
+          random: seeded(41),
+        });
+        const heavy = buildLessonWords(real, chars, {
+          count: 600,
+          minReal: 5,
+          random: seeded(41),
+          weights: { k: 6, f: 6 },
+        });
+        expect(count(heavy, "k")).toBeGreaterThan(count(plain, "k") * 1.5);
+        expect(count(heavy, "f")).toBeGreaterThan(count(plain, "f") * 1.5);
+      });
+
+      it("weighs an ordered corpus on top of its rank", () => {
+        const heavy = buildLessonWords(real, chars, {
+          count: 600,
+          minReal: 5,
+          random: seeded(42),
+          orderedByFrequency: true,
+          weights: { k: 6 },
+        });
+        const plain = buildLessonWords(real, chars, {
+          count: 600,
+          minReal: 5,
+          random: seeded(42),
+          orderedByFrequency: true,
+        });
+        expect(count(heavy, "k")).toBeGreaterThan(count(plain, "k") * 1.5);
+        expect(count(plain, "a")).toBeGreaterThan(count(plain, "k"));
+      });
+
+      it("leaves the draw untouched without weights", () => {
+        const base = buildLessonWords(real, chars, {
+          count: 60,
+          minReal: 5,
+          random: seeded(43),
+        });
+        expect(
+          buildLessonWords(real, chars, {
+            count: 60,
+            minReal: 5,
+            random: seeded(43),
+            weights: {},
+          }),
+        ).toEqual(base);
+      });
+    });
+
     it("resamples a real word with a fresh character instead of mutating one", () => {
       const chars = lessonChars(1, qwerty);
       const real = ["as", "ad", "sad", "lad", "see", "is", "like", "idea"];
@@ -263,7 +587,7 @@ describe("lessons", () => {
 
     it("capitalises real words for the capitals lesson", () => {
       const chars = lessonChars(capitals, qwerty);
-      const real = ["the", "quick", "brown", "fox", "jumps", "over", "lazy"];
+      const real = ["the", "quick", "brown", "fox", "water", "every", "grab"];
       const words = buildLessonWords(real, chars, {
         ...options,
         minReal: 4,
@@ -284,19 +608,74 @@ describe("lessons", () => {
       for (const word of real) expect(words).toContain(capitalised(word));
     });
 
-    it("covers every capital from a wide corpus", () => {
+    it("covers every capital of the hand from a wide corpus", () => {
       const real = [..."abcdefghijklmnopqrstuvwxyz"].map(
         (letter) => `${letter}ab`,
       );
-      const words = buildLessonWords(real, lessonChars(capitals, qwerty), {
-        minReal: 10,
-        random: seeded(14),
-      });
-      for (const letter of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-        expect(
-          words.filter((word) => word.startsWith(letter)).length,
-        ).toBeGreaterThanOrEqual(4);
+      for (const id of ["capitals-left", "capitals-right"]) {
+        const chars = lessonChars(lessonIndex(id), qwerty);
+        const words = buildLessonWords(real, chars, {
+          minReal: 10,
+          random: seeded(14),
+        });
+        for (const letter of chars.fresh) {
+          expect(
+            words.filter((word) => word.startsWith(letter)).length,
+          ).toBeGreaterThanOrEqual(4);
+        }
       }
+    });
+
+    it("draws accented words from the corpus and falls back to pseudo words", () => {
+      const chars = lessonChars(lessonIndex("accents-grave"), canadianFrench);
+      const real = [
+        "très",
+        "après",
+        "père",
+        "mère",
+        "élève",
+        "là",
+        "déjà",
+        "où",
+      ];
+      const words = buildLessonWords(real, chars, {
+        ...options,
+        minReal: 4,
+        random: seeded(31),
+      });
+      for (const accent of chars.fresh) {
+        expect(
+          words.filter((word) => word.includes(accent)).length,
+        ).toBeGreaterThanOrEqual(10);
+      }
+      expect(
+        words.filter((word) => real.includes(word)).length,
+      ).toBeGreaterThan(0);
+      for (const word of words) {
+        for (const char of word) expect(chars.allowed).toContain(char);
+      }
+
+      const pseudo = buildLessonWords(["as", "sad"], chars, {
+        ...options,
+        random: seeded(32),
+      });
+      for (const accent of chars.fresh) {
+        expect(
+          pseudo.filter((word) => word.includes(accent)).length,
+        ).toBeGreaterThanOrEqual(10);
+      }
+      for (const word of pseudo) expect(word).toBe(word.toLowerCase());
+
+      const rare = buildLessonWords(["où", ...real.slice(0, 5)], chars, {
+        ...options,
+        minReal: 4,
+        random: seeded(33),
+      });
+      const withU = rare.filter((word) => word.includes("ù"));
+      expect(withU.length).toBeGreaterThanOrEqual(10);
+      expect(withU.filter((word) => word !== "où").length).toBeGreaterThan(
+        withU.length / 3,
+      );
     });
 
     it("attaches fresh symbols to words", () => {
@@ -323,6 +702,50 @@ describe("lessons", () => {
           { id: "e-i", name: "e i", newKeys: ["KeyE", "KeyI"] },
         ),
       ).toEqual({ KeyE: { total: 2, errors: 1 } });
+    });
+
+    it("counts every layer for an auto lesson", () => {
+      expect(
+        countPerKey(
+          [
+            { keycode: "Digit1", shifted: false, correct: true },
+            { keycode: "Digit1", shifted: true, correct: false },
+          ],
+          {
+            id: "numbers",
+            name: "numbers",
+            newKeys: ["Digit1"],
+            layer: "auto",
+            charClass: "digit",
+          },
+        ),
+      ).toEqual({ Digit1: { total: 2, errors: 1 } });
+    });
+
+    it("lists every key of a track, touched or not, and counts the given keys", () => {
+      const grave = LESSONS[
+        lessonIndex("accents-grave")
+      ] as (typeof LESSONS)[0];
+      expect(
+        countPerKey(
+          [
+            { keycode: "Quote", shifted: false, correct: true },
+            { keycode: "KeyE", shifted: false, correct: true },
+            { keycode: "Quote", shifted: false, correct: false },
+          ],
+          grave,
+          ["Quote", "BracketLeft"],
+        ),
+      ).toEqual({
+        Quote: { total: 2, errors: 1 },
+        BracketLeft: { total: 0, errors: 0 },
+      });
+      expect(
+        countPerKey(
+          [{ keycode: "Quote", shifted: false, correct: true }],
+          grave,
+        ),
+      ).toEqual({});
     });
 
     it("counts only shifted samples for a shifted lesson", () => {
@@ -428,6 +851,7 @@ describe("lessons", () => {
         "qwerty",
       );
       expect(status.ok).toBe(false);
+      expect(status.phase).toBe("accuracy");
       expect(status.wpmShort).toBe(0);
       expect(status.accShort).toBe(0);
       expect(status.weakKeys).toEqual([
@@ -482,15 +906,67 @@ describe("lessons", () => {
       const required = (id: string): number =>
         masterySamplesFor(LESSONS[lessonIndex(id)] as (typeof LESSONS)[0]);
       expect(required("e-i")).toBe(20);
-      expect(required("punctuation")).toBe(12);
+      expect(required("quote-minus")).toBe(20);
+      expect(required("equal-brackets")).toBe(20);
+      expect(required("shifted-punctuation")).toBe(10);
       expect(required("home-row")).toBe(8);
       expect(required("numbers")).toBe(6);
-      expect(required("capitals")).toBe(3);
-      expect(masteryOf([], "capitals", "qwerty")["KeyQ"]).toEqual({
+      expect(required("capitals-left")).toBe(4);
+      expect(required("capitals-right")).toBe(6);
+      const grave = LESSONS[
+        lessonIndex("accents-grave")
+      ] as (typeof LESSONS)[0];
+      expect(masterySamplesFor(grave)).toBe(20);
+      expect(masterySamplesFor(grave, 1)).toBe(20);
+      expect(masterySamplesFor(grave, 2)).toBe(20);
+      expect(masterySamplesFor(grave, 5)).toBe(12);
+      expect(masteryOf([], "capitals-left", "qwerty")["KeyQ"]).toEqual({
         samples: 0,
         errors: 0,
-        required: 3,
+        required: 4,
       });
+    });
+
+    it("reads the keys of a track from its attempts", () => {
+      expect(masteryOf([], "accents-grave", "canadian_french")).toEqual({});
+      const graveAttempt = (perKey: Attempt["perKey"], wpm = 30): Attempt => ({
+        ...attempt(perKey),
+        lesson: "accents-grave",
+        layout: "canadian_french",
+        wpm,
+      });
+      expect(
+        masteryOf(
+          [
+            graveAttempt({ Quote: { total: 5, errors: 1 } }),
+            graveAttempt({ Quote: { total: 6, errors: 0 } }),
+          ],
+          "accents-grave",
+          "canadian_french",
+        ),
+      ).toEqual({ Quote: { samples: 11, errors: 1, required: 20 } });
+      expect(
+        masteryOf(
+          [
+            graveAttempt({
+              Quote: { total: 5, errors: 0 },
+              BracketLeft: { total: 1, errors: 0 },
+              BracketRight: { total: 0, errors: 0 },
+              Slash: { total: 0, errors: 0 },
+              KeyC: { total: 0, errors: 0 },
+            }),
+          ],
+          "accents-grave",
+          "canadian_french",
+        )["Quote"],
+      ).toEqual({ samples: 5, errors: 0, required: 12 });
+      expect(
+        unlockStatus(
+          [graveAttempt({ Quote: { total: 20, errors: 0 } }, 40)],
+          "accents-grave",
+          "canadian_french",
+        ).ok,
+      ).toBe(true);
     });
 
     it("pools only the last three attempts of that lesson and layout", () => {
@@ -529,6 +1005,7 @@ describe("lessons", () => {
     it("passes with the floors and every key mastered", () => {
       expect(status([attempt()])).toEqual({
         ok: true,
+        phase: "speed",
         wpmShort: 0,
         accShort: 0,
         weakKeys: [],
@@ -538,10 +1015,54 @@ describe("lessons", () => {
     it("reports the wpm shortfall from the rounded latest attempt", () => {
       expect(status([attempt({ wpm: 26.6 })])).toMatchObject({
         ok: false,
+        phase: "speed",
         wpmShort: 3,
         accShort: 0,
       });
       expect(status([attempt(), attempt({ wpm: 20 })]).wpmShort).toBe(10);
+    });
+
+    it("stays in the accuracy phase and hides the wpm shortfall while a key is weak", () => {
+      const weak = status([
+        attempt({
+          wpm: 20,
+          perKey: {
+            KeyE: { total: 20, errors: 0 },
+            KeyI: { total: 20, errors: 3 },
+          },
+        }),
+      ]);
+      expect(weak.phase).toBe("accuracy");
+      expect(weak.wpmShort).toBe(0);
+      expect(weak.weakKeys.map((key) => key.keycode)).toEqual(["KeyI"]);
+      const thin = status([
+        attempt({
+          wpm: 20,
+          acc: 90,
+          perKey: { KeyE: { total: 5, errors: 0 } },
+        }),
+      ]);
+      expect(thin.phase).toBe("accuracy");
+      expect(thin.wpmShort).toBe(0);
+      expect(thin.accShort).toBe(7);
+    });
+
+    it("starts a track in the accuracy phase before any key is known", () => {
+      const fresh = unlockStatus([], "accents-grave", "canadian_french");
+      expect(fresh.phase).toBe("accuracy");
+      expect(fresh.wpmShort).toBe(0);
+      expect(fresh.weakKeys).toEqual([]);
+    });
+
+    it("moves to the speed phase once mastery holds, whatever the wpm", () => {
+      const slow = status([attempt({ wpm: 12 })]);
+      expect(slow).toMatchObject({ ok: false, phase: "speed", wpmShort: 18 });
+      const slowInaccurate = status([attempt({ wpm: 12, acc: 90 })]);
+      expect(slowInaccurate).toMatchObject({
+        phase: "speed",
+        wpmShort: 18,
+        accShort: 7,
+      });
     });
 
     it("reports the accuracy shortfall from the floored latest attempt", () => {
@@ -584,7 +1105,8 @@ describe("lessons", () => {
     it("asks for the whole bar without attempts", () => {
       expect(status([])).toEqual({
         ok: false,
-        wpmShort: 30,
+        phase: "accuracy",
+        wpmShort: 0,
         accShort: 97,
         weakKeys: [
           { keycode: "KeyE", samples: 0, errors: 0, required: 20 },
@@ -596,6 +1118,7 @@ describe("lessons", () => {
     it("needs the strict window even when the latest attempt passes", () => {
       expect(status([attempt()], criteriaFor("strict"))).toMatchObject({
         ok: false,
+        phase: "speed",
         wpmShort: 0,
         accShort: 0,
         weakKeys: [],
@@ -639,11 +1162,11 @@ describe("lessons", () => {
         attempts: [v1Attempt(1, 25), v1Attempt(2, 60), v1Attempt(1, 31.4)],
       });
       expect(upgraded).toEqual({
-        version: 2,
+        version: 3,
         layouts: {
           qwerty: {
-            current: 2,
-            unlocked: 3,
+            current: "r-u",
+            unlocked: "t-y",
             best: { "e-i": 31.4, "r-u": 60 },
           },
         },
@@ -660,7 +1183,7 @@ describe("lessons", () => {
         version: 1,
         current: 0,
         unlocked: 0,
-        attempts: [v1Attempt(LESSONS.length, 40), v1Attempt(0, 20)],
+        attempts: [v1Attempt(LESSON_IDS_V2.length, 40), v1Attempt(0, 20)],
       });
       expect(upgraded.attempts.map((attempt) => attempt.lesson)).toEqual([
         "home-row",
@@ -677,6 +1200,82 @@ describe("lessons", () => {
           attempts: [v1Attempt(0, 0)],
         }).layouts["qwerty"]?.best,
       ).toEqual({ "home-row": 0 });
+    });
+
+    const v2Attempt = (
+      lesson: string,
+      wpm: number,
+      layout = "qwerty",
+    ): Attempt => ({
+      lesson,
+      layout,
+      wpm,
+      acc: 98,
+      perKey: {},
+      ts: wpm,
+    });
+
+    it("keeps the unlocked lesson by id after the capitals split", () => {
+      const v2: ProgressV2 = {
+        version: 2,
+        layouts: {
+          qwerty: { current: 12, unlocked: 13, best: { capitals: 40 } },
+          dvorak: { current: 0, unlocked: 14, best: {} },
+        },
+        attempts: [
+          v2Attempt("capitals", 40),
+          v2Attempt("numbers", 33, "dvorak"),
+        ],
+      };
+      const upgraded = upgradeProgress(v2);
+      expect(upgraded.layouts["qwerty"]).toEqual({
+        current: "capitals-left",
+        unlocked: "quote-minus",
+        best: { "capitals-left": 40 },
+      });
+      expect(upgraded.layouts["dvorak"]).toEqual({
+        current: "home-row",
+        unlocked: "numbers",
+        best: {},
+      });
+      expect(lessonIndex("quote-minus")).toBeGreaterThan(13);
+      expect(lessonIndex("numbers")).toBeGreaterThan(14);
+      expect(upgraded.attempts.map((attempt) => attempt.lesson)).toEqual([
+        "capitals-left",
+        "numbers",
+      ]);
+    });
+
+    it("maps the old ids and merges their bests", () => {
+      const upgraded = upgradeProgress({
+        version: 2,
+        layouts: {
+          qwerty: {
+            current: 13,
+            unlocked: 13,
+            best: { capitals: 40, "capitals-left": 45, punctuation: 30 },
+          },
+        },
+        attempts: [v2Attempt("punctuation", 30), v2Attempt("e-i", 50)],
+      });
+      expect(upgraded.layouts["qwerty"]?.best).toEqual({
+        "capitals-left": 45,
+        "quote-minus": 30,
+      });
+      expect(upgraded.attempts.map((attempt) => attempt.lesson)).toEqual([
+        "quote-minus",
+        "e-i",
+      ]);
+    });
+
+    it("sends an index beyond the v2 list back to the first lesson", () => {
+      expect(
+        upgradeProgress({
+          version: 2,
+          layouts: { qwerty: { current: 40, unlocked: 99, best: {} } },
+          attempts: [],
+        }).layouts["qwerty"],
+      ).toEqual({ current: "home-row", unlocked: "home-row", best: {} });
     });
   });
 
@@ -819,8 +1418,10 @@ describe("lessons", () => {
         vi.resetModules();
         const fresh = await import("../../src/ts/trainer/lessons");
         expect(fresh.progress()).toEqual({
-          version: 2,
-          layouts: { qwerty: { current: 2, unlocked: 3, best: { "e-i": 28 } } },
+          version: 3,
+          layouts: {
+            qwerty: { current: "r-u", unlocked: "t-y", best: { "e-i": 28 } },
+          },
           attempts: [
             {
               lesson: "e-i",
@@ -834,8 +1435,87 @@ describe("lessons", () => {
         });
         expect(
           JSON.parse(localStorage.getItem("trainerProgress") ?? "{}").version,
-        ).toBe(2);
+        ).toBe(3);
       });
+
+      it("upgrades a stored v2 blob on load and keeps the unlocked lesson", async () => {
+        localStorage.setItem(
+          "trainerProgress",
+          JSON.stringify({
+            version: 2,
+            layouts: {
+              qwerty: { current: 13, unlocked: 13, best: { punctuation: 31 } },
+            },
+            attempts: [],
+          }),
+        );
+        vi.resetModules();
+        const fresh = await import("../../src/ts/trainer/lessons");
+        expect(fresh.progress()).toEqual({
+          version: 3,
+          layouts: {
+            qwerty: {
+              current: "quote-minus",
+              unlocked: "quote-minus",
+              best: { "quote-minus": 31 },
+            },
+          },
+          attempts: [],
+        });
+        expect(
+          JSON.parse(localStorage.getItem("trainerProgress") ?? "{}").version,
+        ).toBe(3);
+      });
+    });
+
+    it("resolves an unknown stored id to the first lesson", () => {
+      replaceProgress({
+        version: 3,
+        layouts: { qwerty: { current: "gone", unlocked: "gone", best: {} } },
+        attempts: [],
+      });
+      expect(currentLesson()).toBe(0);
+      expect(unlockedUpTo()).toBe(0);
+      setCurrentLesson(2);
+      expect(progress().layouts["qwerty"]?.current).toBe("r-u");
+      setCurrentLesson(99);
+      expect(progress().layouts["qwerty"]?.current).toBe("r-u");
+    });
+
+    it("falls back to the nearest lesson the layout offers", () => {
+      replaceProgress({
+        version: 3,
+        layouts: {
+          qwerty: {
+            current: "accents-grave",
+            unlocked: "accents-diaeresis",
+            best: {},
+          },
+        },
+        attempts: [],
+      });
+      expect(currentLesson()).toBe(lessonIndex("shifted-punctuation"));
+      setConfigStore("keymapLayout", "canadian_french");
+      replaceProgress({
+        version: 3,
+        layouts: {
+          canadian_french: {
+            current: "accents-grave",
+            unlocked: "accents-grave",
+            best: {},
+          },
+        },
+        attempts: [],
+      });
+      expect(currentLesson()).toBe(lessonIndex("accents-grave"));
+      setConfigStore("keymapLayout", "overrideSync");
+    });
+
+    it("stores the unlocked lesson as an id", () => {
+      expect(recordAttempt(attempt("home-row", "qwerty", 40))).toBe(true);
+      expect(progress().layouts["qwerty"]?.unlocked).toBe("e-i");
+      expect(recordAttempt(attempt("home-row", "qwerty", 40))).toBe(false);
+      expect(progress().layouts["qwerty"]?.unlocked).toBe("e-i");
     });
 
     it("stores an attempt that passes the floors but not mastery without unlocking", () => {
@@ -849,7 +1529,7 @@ describe("lessons", () => {
 
     it("re-evaluates unlocks per layout on replace", () => {
       const data: Progress = {
-        version: 2,
+        version: 3,
         layouts: {},
         attempts: [
           attempt("home-row", "qwerty", 40),
@@ -858,8 +1538,8 @@ describe("lessons", () => {
         ],
       };
       replaceProgress(data);
-      expect(progress().layouts["qwerty"]?.unlocked).toBe(2);
-      expect(progress().layouts["dvorak"]?.unlocked).toBe(1);
+      expect(progress().layouts["qwerty"]?.unlocked).toBe("r-u");
+      expect(progress().layouts["dvorak"]?.unlocked).toBe("e-i");
     });
   });
 });

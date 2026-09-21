@@ -10,6 +10,15 @@ import * as Core from "../../../../src/ts/states/core";
 import * as TestState from "../../../../src/ts/states/test";
 import * as Actions from "../../../../src/ts/trainer/actions";
 import {
+  dayOf,
+  recordSnapshot,
+  resetKeyHistory,
+} from "../../../../src/ts/trainer/history";
+import {
+  recordSamples,
+  resetKeyStats,
+} from "../../../../src/ts/trainer/key-stats";
+import {
   Attempt,
   LESSONS,
   replaceProgress,
@@ -79,6 +88,7 @@ function readLayout(name: string): LayoutObject {
 }
 
 const qwerty = readLayout("qwerty");
+const dvorak = readLayout("dvorak");
 
 function attempt(
   lesson: string,
@@ -100,22 +110,77 @@ describe("TrainerPage", () => {
     vi.spyOn(Core, "getActivePage").mockReturnValue("trainer");
     setActiveLesson(null);
     resetProgress();
+    resetKeyStats();
+    resetKeyHistory();
     setConfigStore("layout", "default");
     setConfigStore("keymapLayout", "overrideSync");
   });
 
+  describe("key changes", () => {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const samples = (
+      keycode: "KeyK" | "KeyD",
+      count: number,
+      ms: number,
+    ): void =>
+      recordSamples(
+        "qwerty",
+        Array.from({ length: count }, () => ({
+          keycode,
+          shifted: false,
+          correct: true,
+          spacingMs: ms,
+        })),
+      );
+
+    it("stays hidden without a snapshot old enough", () => {
+      samples("KeyK", 30, 300);
+      render(() => <TrainerPage />);
+      expect(screen.queryByTestId("keyChanges")).toBeNull();
+      recordSnapshot(
+        "qwerty",
+        { KeyK: { emaMs: 600, errRate: 0, total: 5 } },
+        Date.now() - 3 * dayMs,
+      );
+      expect(screen.queryByTestId("keyChanges")).toBeNull();
+    });
+
+    it("lists keys that moved since a snapshot at least a week old", () => {
+      recordSnapshot(
+        "qwerty",
+        {
+          KeyK: { emaMs: 420, errRate: 0, total: 5 },
+          KeyD: { emaMs: 200, errRate: 0, total: 5 },
+        },
+        Date.now() - 8 * dayMs,
+      );
+      samples("KeyK", 30, 300);
+      samples("KeyD", 30, 250);
+      render(() => <TrainerPage />);
+      const list = screen.getByTestId("keyChanges");
+      expect(list).toHaveTextContent("key changes");
+      expect(list).toHaveTextContent("k is 120 ms faster than last week");
+      expect(list).toHaveTextContent("d is 50 ms slower than last week");
+      expect(dayOf(Date.now())).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      setConfigStore("layout", "dvorak");
+      expect(screen.queryByTestId("keyChanges")).toBeNull();
+    });
+  });
+
   it("lists every lesson and hides the chart without attempts", () => {
     render(() => <TrainerPage />);
-    expect(screen.getAllByRole("button", { name: /home row/ })).toHaveLength(2);
+    expect(
+      screen.getAllByRole("button", { name: /a s d f j k l ;/ }),
+    ).toHaveLength(2);
     expect(screen.queryByTestId("chart")).toBeNull();
     expect(screen.queryByRole("table")).toBeNull();
   });
 
   it("shows the chart and one table row per lesson once the layout has attempts", () => {
     replaceProgress({
-      version: 2,
+      version: 3,
       layouts: {
-        qwerty: { current: 1, unlocked: 1, best: { "home-row": 44.4 } },
+        qwerty: { current: "e-i", unlocked: "e-i", best: { "home-row": 44.4 } },
       },
       attempts: [
         attempt("home-row", 44.4, 99),
@@ -152,8 +217,10 @@ describe("TrainerPage", () => {
     ]);
     setConfigStore("trainerUnlock", "normal");
     const rows = screen.getAllByRole("row").slice(1);
-    expect(rows).toHaveLength(LESSONS.length);
-    expect(rows[0]).toHaveTextContent("1. home row");
+    expect(rows).toHaveLength(
+      LESSONS.filter((lesson) => lesson.chars === undefined).length,
+    );
+    expect(rows[0]).toHaveTextContent("1. a s d f j k l ;");
     expect(rows[0]).toHaveTextContent("2");
     expect(rows[0]).toHaveTextContent("44");
     expect(rows[0]).toHaveTextContent("32");
@@ -162,6 +229,66 @@ describe("TrainerPage", () => {
     expect(rows[1]).toHaveTextContent("2. e i");
     expect(rows[1]).toHaveTextContent("current");
     expect(rows[2]).toHaveTextContent("locked");
+  });
+
+  it("names the lessons by the legends of the input layout", () => {
+    vi.spyOn(TestState, "inputLayoutObject").mockReturnValue(dvorak);
+    replaceProgress({
+      version: 3,
+      layouts: { dvorak: { current: "e-i", unlocked: "e-i", best: {} } },
+      attempts: [attempt("home-row", 40, 99, "dvorak")],
+    });
+    setConfigStore("layout", "dvorak");
+    render(() => <TrainerPage />);
+    expect(
+      screen.getByRole("button", { name: /continue lesson 2: \. c/ }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("a o e u h t n s")).toHaveLength(1);
+    expect(screen.getAllByText("capitals left")).toHaveLength(1);
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows[0]).toHaveTextContent("1. a o e u h t n s");
+    expect(rows[1]).toHaveTextContent("2. . c");
+    expect(rows[12]).toHaveTextContent("13. capitals left");
+  });
+
+  it("hides the accents track on a layout without dead keys and numbers the rest", () => {
+    render(() => <TrainerPage />);
+    const map = screen
+      .getAllByRole("button")
+      .filter((button) => button.hasAttribute("data-lesson-state"));
+    expect(map).toHaveLength(18);
+    expect(screen.queryByText("è à ù")).toBeNull();
+    expect(map[17]).toHaveTextContent("18");
+    expect(map[17]).toHaveTextContent("numbers");
+  });
+
+  it("shows the accents track on canadian_french", () => {
+    vi.spyOn(TestState, "inputLayoutObject").mockReturnValue(
+      readLayout("canadian_french"),
+    );
+    setConfigStore("keymapLayout", "canadian_french");
+    render(() => <TrainerPage />);
+    const map = screen
+      .getAllByRole("button")
+      .filter((button) => button.hasAttribute("data-lesson-state"));
+    expect(map).toHaveLength(LESSONS.length);
+    expect(map[18]).toHaveTextContent("19");
+    expect(map[18]).toHaveTextContent("è à ù");
+    expect(map[21]).toHaveTextContent("22");
+    expect(map[21]).toHaveTextContent("numbers");
+  });
+
+  it("hides the accents track on an emulated canadian_french layout", () => {
+    vi.spyOn(TestState, "inputLayoutObject").mockReturnValue(
+      readLayout("canadian_french"),
+    );
+    setConfigStore("layout", "canadian_french");
+    render(() => <TrainerPage />);
+    const map = screen
+      .getAllByRole("button")
+      .filter((button) => button.hasAttribute("data-lesson-state"));
+    expect(map).toHaveLength(18);
+    expect(screen.queryByText("è à ù")).toBeNull();
   });
 
   it("exports through the shared action", () => {
@@ -173,7 +300,7 @@ describe("TrainerPage", () => {
   it("hands a chosen file to the import action and clears the input", async () => {
     vi.mocked(Actions.importBackupFile).mockResolvedValue(true);
     render(() => <TrainerPage />);
-    const input = screen.getByTestId("trainerImportFile") as HTMLInputElement;
+    const input = screen.getByTestId<HTMLInputElement>("trainerImportFile");
     expect(input).toHaveAttribute("accept", ".json,application/json");
     const file = new File(["{}"], "trainer-backup.json", {
       type: "application/json",
@@ -190,7 +317,7 @@ describe("TrainerPage", () => {
 
   it("opens the file picker when an import is requested", () => {
     render(() => <TrainerPage />);
-    const input = screen.getByTestId("trainerImportFile") as HTMLInputElement;
+    const input = screen.getByTestId<HTMLInputElement>("trainerImportFile");
     const click = vi.spyOn(input, "click").mockImplementation(() => undefined);
     expect(click).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText("import"));
@@ -201,7 +328,7 @@ describe("TrainerPage", () => {
 
   it("hides the chart for a layout without attempts", () => {
     replaceProgress({
-      version: 2,
+      version: 3,
       layouts: {},
       attempts: [attempt("home-row", 40, 99, "dvorak")],
     });

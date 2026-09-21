@@ -4,6 +4,7 @@ import {
   FormatDisplayOptions,
   formatForDisplay,
 } from "@tanstack/solid-hotkeys";
+import { Keycode } from "../../../constants/keys";
 import { Finger } from "../../../trainer/finger";
 import { OneOf } from "../../../utils/types";
 
@@ -35,6 +36,7 @@ export type KeyDefinition = {
   isHoming?: boolean;
   finger?: Finger;
   isHomeKey?: boolean;
+  keycode?: Keycode;
   align?: "top";
 };
 export type KeyboardDefinition = KeyDefinition[][];

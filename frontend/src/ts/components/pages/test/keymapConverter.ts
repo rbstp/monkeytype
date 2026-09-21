@@ -43,6 +43,7 @@ function keycodeFor(
   keyDef: KeymapLayout[number][number],
   layoutType: LayoutObject["type"],
 ): Keycode | undefined {
+  if (keyDef.isLayoutIndicator) return "Space";
   const position = keyDef.layoutPosition;
   if (position?.row === undefined) return undefined;
   return layoutPositionToKeycode(
@@ -107,6 +108,7 @@ function convert(options: {
           ...(final.isHoming === true ? { isHoming: true } : {}),
           ...(finger !== undefined ? { finger } : {}),
           ...(isHomeKey ? { isHomeKey: true } : {}),
+          ...(keycode !== undefined ? { keycode } : {}),
           ...(final.align !== undefined ? { align: final.align } : {}),
         } satisfies KeyDefinition;
       })

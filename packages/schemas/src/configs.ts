@@ -134,6 +134,9 @@ export type KeymapKeys = z.infer<typeof KeymapKeysSchema>;
 export const KeymapFingerColorsSchema = z.enum(["off", "shades"]);
 export type KeymapFingerColors = z.infer<typeof KeymapFingerColorsSchema>;
 
+export const KeymapHeatSchema = z.enum(["off", "speed", "errors"]);
+export type KeymapHeat = z.infer<typeof KeymapHeatSchema>;
+
 export const KeymapSizeSchema = z.number().min(0.5).max(3.5).step(0.1);
 export type KeymapSize = z.infer<typeof KeymapSizeSchema>;
 
@@ -499,6 +502,7 @@ export const ConfigSchema = z
     keymapKeys: KeymapKeysSchema,
     keymapSize: KeymapSizeSchema,
     keymapFingerColors: KeymapFingerColorsSchema,
+    keymapHeat: KeymapHeatSchema,
 
     // theme
     flipTestColors: z.boolean(),

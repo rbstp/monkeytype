@@ -23,9 +23,13 @@ Settled 2026-09-20 after the expansion exploration in [TRAINER_ROADMAP.md](./TRA
 
 - v1 progress had no layout field. The migration files every v1 attempt, current and unlocked under `qwerty`, because it runs when the module loads and the config is not available yet. A v1 user on another layout keeps the history in the qwerty bucket and starts that layout fresh; re-typing a lesson is cheaper than guessing.
 
+## Notes on Progress v3
+
+- v2 kept `current` and `unlocked` as indices, so splitting the capitals lesson would have moved everyone one lesson forward. v3 stores lesson ids. `LESSON_IDS_V2` in lessons.ts is the v2 list, frozen, and the migration maps each index through it, then renames "capitals" to "capitals-left" and "punctuation" to "quote-minus". An id the current list does not know resolves to the first lesson.
+
 ## Notes on the French goal
 
 - canadian_french has four layers per key: unshifted, shift, AltGr, shift + AltGr. `findLayoutKey` already returns the layer, and `keycodeToLayoutKey` reads any layer.
-- Only `é` and `ç` are direct legends. `è à ù ê â î ô û ë ï ü` come from dead keys: grave on the backquote key, circumflex on the key left of the backspace row, diaeresis on the shifted cedilla key. The layout JSON carries no dead-key information, so the trainer needs its own table mapping an accented char to the dead keycode plus the base keycode.
-- When the OS handles the layout, the browser delivers the accented char as one input event after the dead-key sequence. The sampler must attribute that char to two keypresses and the spacing to the pair.
+- Only `é` (the Slash position, unshifted) and `ç` (KeyC on the AltGr layer) are direct legends. `è à ù ê â î ô û ë ï ü` come from dead keys: the grave "`" sits on the last key of row3 (the Quote position), not on the backquote key, the circumflex "^" on the first key after P (BracketLeft), and the diaeresis "¨" is the shifted legend of the cedilla key "¸" (BracketRight). The layout JSON carries no dead-key information, so trainer/dead-keys.ts maps an accented char to the dead keycode, its layer and the base keycode, and matches the table to a layout by where those legends sit.
+- When the OS handles the layout, the browser delivers the accented char as one input event after the dead-key sequence. The sampler attributes that char to two keypresses; the dead key carries the spacing of the pair and the base key only the correctness, so a letter typed well in English is not slowed by its accents.
 - The layout emulator has no dead-key state, so the French track only works with the OS layout, which matches decision 3.

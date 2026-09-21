@@ -1,5 +1,6 @@
 import { CompletedEvent } from "@monkeytype/schemas/results";
 import { Config } from "../config/store";
+import { getActivePage } from "../states/core";
 import {
   showNoticeNotification,
   showSuccessNotification,
@@ -8,6 +9,7 @@ import { __nonReactive } from "../states/test";
 import { EventLog } from "../test/events/types";
 import { keycodeToLayoutKey } from "../utils/key-converter";
 import { resolveLayoutName } from "../utils/layout-name";
+import { recordConfusions } from "./confusions";
 import { drillSummary } from "./drill";
 import {
   getLayoutStats,
@@ -19,11 +21,15 @@ import {
   countPerKey,
   isLessonText,
   lessonChars,
+  lessonKeycodes,
+  lessonName,
+  lessonNumber,
   LESSONS,
+  nextLesson,
   progressLayout,
   recordAttempt,
 } from "./lessons";
-import { getActiveDrill, getActiveLesson } from "./session";
+import { getActiveDrill, getActiveLesson, rebuildLessonWords } from "./session";
 
 export { tracksNextKey } from "./session";
 
@@ -39,7 +45,7 @@ export type FinishedTest = {
 export function onTestFinished(test: FinishedTest): void {
   if (!test.samplesUsable || test.eventLog.context.mode === "zen") return;
 
-  const layoutName = layoutStatsName(
+  const statsName = layoutStatsName(
     resolveLayoutName(Config.layout, Config.keymapLayout),
     Config.funbox,
   );
@@ -58,13 +64,19 @@ export function onTestFinished(test: FinishedTest): void {
     .getInputLayout()
     .then((layout) => {
       const samples = samplesFromEventLog(test.eventLog, layout);
-      if (recordKeys) recordSamples(layoutName, samples);
+      if (recordKeys) {
+        recordSamples(statsName, samples);
+        recordConfusions(statsName, samples);
+        if (lessonIndex !== null && getActivePage() === "test") {
+          rebuildLessonWords().catch(console.error);
+        }
+      }
       const drill = getActiveDrill();
       if (drill !== null && recordKeys) {
         showNoticeNotification(
           drillSummary(
             drill,
-            getLayoutStats(layoutName),
+            getLayoutStats(statsName),
             (keycode) => keycodeToLayoutKey(keycode, layout) ?? keycode,
           ),
           { durationMs: 8000 },
@@ -80,17 +92,20 @@ export function onTestFinished(test: FinishedTest): void {
         return;
       }
 
+      const layoutName = progressLayout();
       const unlocked = recordAttempt({
         lesson: lesson.id,
-        layout: progressLayout(),
+        layout: layoutName,
         wpm: test.completedEvent.wpm,
         acc: test.completedEvent.acc,
-        perKey: countPerKey(samples, lesson),
+        perKey: countPerKey(samples, lesson, lessonKeycodes(lesson, layout)),
         ts: Date.now(),
       });
-      if (unlocked) {
+      const next = nextLesson(lessonIndex, layoutName);
+      const following = next === undefined ? undefined : LESSONS[next];
+      if (unlocked && next !== undefined && following !== undefined) {
         showSuccessNotification(
-          `Lesson ${lessonIndex + 2} unlocked: ${LESSONS[lessonIndex + 1]?.name}`,
+          `Lesson ${lessonNumber(next, layoutName)} unlocked: ${lessonName(following, layout)}`,
           { durationMs: 5000 },
         );
       }

@@ -44,6 +44,7 @@ function readLayout(name: string): LayoutObject {
 }
 
 const qwerty = readLayout("qwerty");
+const dvorak = readLayout("dvorak");
 
 const resultAt = 1_000_000;
 
@@ -64,8 +65,14 @@ function attempt(overrides: Partial<Attempt> = {}): Attempt {
 
 function stored(attempts: Attempt[], unlocked = 1): Progress {
   return {
-    version: 2,
-    layouts: { qwerty: { current: 1, unlocked, best: {} } },
+    version: 3,
+    layouts: {
+      qwerty: {
+        current: "e-i",
+        unlocked: LESSONS[unlocked]?.id ?? "",
+        best: {},
+      },
+    },
     attempts,
   };
 }
@@ -127,7 +134,7 @@ describe("LessonResultCard", () => {
     replaceProgress(stored([attempt({ wpm: 26.6 })]));
     render(() => <LessonResultCard />);
     expect(screen.getByTestId("lessonresult")).toHaveTextContent(
-      "27 wpm, 3 short of 30",
+      "speed phase: 27 wpm, 3 short of 30",
     );
   });
 
@@ -137,7 +144,7 @@ describe("LessonResultCard", () => {
     replaceProgress(stored([attempt({ acc: 95.9 })]));
     render(() => <LessonResultCard />);
     expect(screen.getByTestId("lessonresult")).toHaveTextContent(
-      "accuracy 95%, 2 short of 97%",
+      "speed phase: accuracy 95%, 2 short of 97%",
     );
   });
 
@@ -156,7 +163,7 @@ describe("LessonResultCard", () => {
     );
     render(() => <LessonResultCard />);
     expect(screen.getByTestId("lessonresult")).toHaveTextContent(
-      "passed the bar, i needs 12 more samples",
+      "accuracy phase: i needs 12 more samples",
     );
     replaceProgress(
       stored([
@@ -169,7 +176,46 @@ describe("LessonResultCard", () => {
       ]),
     );
     expect(screen.getByTestId("lessonresult")).toHaveTextContent(
-      "passed the bar, i has 4 errors in 50 samples, above 3%",
+      "accuracy phase: i errs 8%, bar 3%",
+    );
+    replaceProgress(
+      stored([
+        attempt({
+          acc: 95.9,
+          perKey: {
+            KeyE: { total: 20, errors: 0 },
+            KeyI: { total: 50, errors: 4 },
+          },
+        }),
+      ]),
+    );
+    expect(screen.getByTestId("lessonresult")).toHaveTextContent(
+      "accuracy phase: accuracy 95%, 2 short of 97%",
+    );
+  });
+
+  it("hides the wpm shortfall until the speed phase", () => {
+    setActiveLesson(1);
+    finish();
+    replaceProgress(
+      stored([
+        attempt({
+          wpm: 20,
+          perKey: {
+            KeyE: { total: 20, errors: 0 },
+            KeyI: { total: 8, errors: 0 },
+          },
+        }),
+      ]),
+    );
+    render(() => <LessonResultCard />);
+    expect(screen.getByTestId("lessonresult")).toHaveTextContent(
+      "accuracy phase: i needs 12 more samples",
+    );
+    expect(screen.getByTestId("lessonresult")).not.toHaveTextContent("wpm");
+    replaceProgress(stored([attempt({ wpm: 20 })]));
+    expect(screen.getByTestId("lessonresult")).toHaveTextContent(
+      "speed phase: 20 wpm, 10 short of 30",
     );
   });
 
@@ -180,7 +226,7 @@ describe("LessonResultCard", () => {
     replaceProgress(stored([attempt({ wpm: 40, acc: 99 })]));
     render(() => <LessonResultCard />);
     expect(screen.getByTestId("lessonresult")).toHaveTextContent(
-      "passed the bar, pass once more to unlock",
+      "speed phase: pass once more to unlock",
     );
   });
 
@@ -193,7 +239,31 @@ describe("LessonResultCard", () => {
     );
     recordAttempt(attempt());
     expect(screen.getByTestId("lessonresult")).toHaveTextContent(
-      "lesson 3 unlocked",
+      "lesson 3 unlocked: r u",
+    );
+  });
+
+  it("names the unlocked lesson and the weak key by the input layout", () => {
+    vi.spyOn(TestState, "inputLayoutObject").mockReturnValue(dvorak);
+    setActiveLesson(1);
+    finish();
+    replaceProgress(stored([attempt()]));
+    render(() => <LessonResultCard />);
+    expect(screen.getByTestId("lessonresult")).toHaveTextContent(
+      "lesson 3 unlocked: p g",
+    );
+    replaceProgress(
+      stored([
+        attempt({
+          perKey: {
+            KeyE: { total: 20, errors: 0 },
+            KeyI: { total: 8, errors: 0 },
+          },
+        }),
+      ]),
+    );
+    expect(screen.getByTestId("lessonresult")).toHaveTextContent(
+      "accuracy phase: c needs 12 more samples",
     );
   });
 

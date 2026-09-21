@@ -4,6 +4,10 @@ import { getConfig } from "../../../config/store";
 import { Keycode } from "../../../constants/keys";
 import { getLastResult, inputLayoutObject } from "../../../states/test";
 import { getTheme } from "../../../states/theme";
+import {
+  getLayoutConfusions,
+  worstConfusions,
+} from "../../../trainer/confusions";
 import { FINGER_LABEL, FINGERS, fingerColors } from "../../../trainer/finger";
 import {
   accuracy,
@@ -18,18 +22,20 @@ import { keycodeToLayoutKey } from "../../../utils/key-converter";
 import { resolveLayoutName } from "../../../utils/layout-name";
 
 const shownKeys = 8;
+const shownConfusions = 4;
 
 export function WeakKeysPanel() {
-  const stats = createMemo(() =>
-    getLayoutStats(
-      layoutStatsName(
-        resolveLayoutName(getConfig.layout, getConfig.keymapLayout),
-        getConfig.funbox,
-      ),
-    ),
-  );
+  const statsName = (): string =>
+    layoutStatsName(
+      resolveLayoutName(getConfig.layout, getConfig.keymapLayout),
+      getConfig.funbox,
+    );
+  const stats = createMemo(() => getLayoutStats(statsName()));
   const keys = createMemo(() => worstKeys(stats(), shownKeys));
   const fingers = createMemo(() => fingerSummary(stats()));
+  const confusions = createMemo(() =>
+    worstConfusions(getLayoutConfusions(statsName()), shownConfusions),
+  );
 
   const legend = (keycode: Keycode): string => {
     const layout = inputLayoutObject();
@@ -49,6 +55,12 @@ export function WeakKeysPanel() {
         : {}),
       fingers: fingers(),
       weakKeys: keys().map((key) => ({ ...key, legend: legend(key.keycode) })),
+      confusions: confusions().map((confusion) => ({
+        expected: legend(confusion.expected),
+        typed: legend(confusion.typed),
+        kind: confusion.kind,
+        count: confusion.count,
+      })),
     });
   });
 
@@ -103,6 +115,23 @@ export function WeakKeysPanel() {
             </For>
           </div>
         </div>
+        <Show when={confusions().length > 0}>
+          <div class="sm:col-span-2" data-testid="confusions">
+            <div class="pb-2 text-xs">confusions</div>
+            <div class="flex flex-wrap gap-2 text-xs">
+              <For each={confusions()}>
+                {(confusion) => (
+                  <div class="rounded bg-sub-alt px-3 py-2">
+                    <span class="text-text">{legend(confusion.typed)}</span>
+                    {" for "}
+                    <span class="text-text">{legend(confusion.expected)}</span>
+                    {` (${confusion.kind}) ×${confusion.count}`}
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
         <ul class="list-disc pl-5 text-xs sm:col-span-2">
           <For each={tips()}>{(tip) => <li>{tip}</li>}</For>
         </ul>

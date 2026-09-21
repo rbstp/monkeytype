@@ -15,12 +15,12 @@ Strengths:
 Gaps:
 
 - The chip at LessonNotice.tsx names the active lesson, its best and the target on the test screen; the result card at LessonResultCard.tsx prints the shortfall or the unlock with retry and next. The unlock toast in trainer/index.ts stays.
-- Key stats v2 keeps speed apart from errors: emaMs takes only correct, non-recovery samples with pauses capped at three times the average, errRate is its own moving average, and deletes advance the clock. Shift is still folded into the base key in key-stats.ts. Panel and tips label keys slow or error-prone.
-- Unlocks read the configured floor through criteriaFor and, since the mastery gate, `masteryOf` in lessons.ts pools perKey over the last three attempts: a new key needs its share of a 60-sample budget (20 for a two-key lesson, 3 for capitals) and at most 3% errors before `unlockStatus` says ok. The result card prints the first shortfall.
-- Early lessons read real words since the adaptive-words slice: `largestCorpus` in session.ts loads english_10k, `buildLessonWords` draws by damped rank when the corpus is ordered by frequency and never mutates a real word. The 120-word pool is still built once per startLesson; weak-key weighting and mid-lesson rebuilds are build-order step 17.
-- Layout is assumed qwerty in the lesson names hardcoded in LESSONS in lessons.ts. "default" resolves through keymapLayout in utils/layout-name.ts, and progress is per layout since Progress v2: `progressLayout()` in lessons.ts names the entry that `currentLesson()`, `unlockedUpTo()` and `bestOf()` read.
+- Key stats v2 keeps speed apart from errors: emaMs takes only correct, non-recovery samples with pauses capped at three times the average, errRate is its own moving average, and deletes advance the clock. Shift is still folded into the base key in key-stats.ts; an accented char typed through a dead key counts for the dead key, which carries the spacing, and the base key since the French track. Panel and tips label keys slow or error-prone, and name the worst confusion pairs since pairwise-stats.
+- Unlocks read the configured floor through criteriaFor and, since the mastery gate, `masteryOf` in lessons.ts pools perKey over the last three attempts: a new key needs its share of a 60-sample budget (20 for a two-key lesson, 4 for capitals left, 6 for capitals right) and at most 3% errors before `unlockStatus` says ok. Since step 18 the status carries a phase: accuracy while a new key is weak, speed once mastery holds, and the card and the chip show only what that phase asks for.
+- Early lessons read real words since the adaptive-words slice: `largestCorpus` in session.ts loads english_10k, `buildLessonWords` draws by damped rank when the corpus is ordered by frequency and never mutates a real word. Since step 17 the 120-word pool is weighted by `charWeights` and rebuilt after every finished lesson test through `rebuildLessonWords`.
+- Lesson names follow the layout since layout-aware-curriculum: `lessonName` in lessons.ts joins the fresh legends for the lessons whose name is their qwerty legends and keeps the fixed names, `lessonKeyLegend` resolves the numbers through `layer: "auto"`, and every surface (page, chip, card, indicator, toast, commandline) reads it. "default" resolves through keymapLayout in utils/layout-name.ts, and progress is per layout since Progress v2: `progressLayout()` in lessons.ts names the entry that `currentLesson()`, `unlockedUpTo()` and `bestOf()` read.
 - Config leaks, closed by foundations A: lifecycle.ts sets the store before it fires the finished event, the persisted config hook in session.ts keeps lesson values out of the saved config, and index.ts scores an attempt only when isLessonText accepts the target words.
-- Progress v2 migrates v1 through the localStorage hook and on backup import, keeps 1000 attempts with at most 50 per lesson and layout, and stores a best per lesson so trimming never evicts one. Key stats do the same since key stats v2. The backup travels as a file: `exportBackupFile` and `importBackupFile` in trainer/actions.ts, wired to the trainer page header and the two commandline commands.
+- Progress v3 keeps lesson ids for current and unlocked, so a split or an inserted lesson never moves an unlocked position; v1 and v2 migrate through the localStorage hook and on backup import. Progress keeps 1000 attempts with at most 50 per lesson and layout, and stores a best per lesson so trimming never evicts one. Key stats do the same since key stats v2. The backup travels as a file: `exportBackupFile` and `importBackupFile` in trainer/actions.ts, wired to the trainer page header and the two commandline commands; since step 20 it is version 5 and carries key stats, progress, confusions and the key history.
 
 ## Expansion ideas
 
@@ -53,6 +53,8 @@ The corpus swap lives in the language load in session.ts; Zipf is gated on order
 
 First slice landed in `feat(trainer): adaptive-words, biggest corpus and damped rank sampling`: biggest corpus, damped rank sampling with weight 1 / (rank + 10) ^ 0.6, pool of 120, word-initial capitals for the capitals lesson, and a fresh-char pass that resamples a real word instead of mutating one.
 
+Second slice landed in `feat(trainer): adaptive-words, weak-key weighting and mid-lesson rebuilds`: `WordOptions.weights` multiplies the rank weight by the mean character weight of a word (an unordered, unweighted list still draws uniformly), `charWeights` in trainer/weights.ts gives a key with at least five samples 1 plus five times its error rate plus how far its emaMs sits above the layout median (capped at 2), 1 otherwise, and shifted legends share the key's weight. `rebuildLessonWords` in session.ts recomputes the active lesson's pool with the current stats and applies it through applyCustomText only while no test runs and never during a drill; onTestFinished calls it after recordSamples for an active lesson on the test page, so the next restart chases today's weak keys. N-gram fillers are still open.
+
 Risk, resolved: the fresh-char pass now resamples; only pseudo words are still mutated.
 
 ### Lesson feedback loop
@@ -83,6 +85,8 @@ perKey is recorded per attempt and never read. Pool the last three attempts, req
 
 First slice landed in `feat(trainer): mastery-and-phases, gate unlocks on per-key mastery`: masteryOf and unlockStatus wired into canUnlock, syncUnlocked and recordAttempt, plain counts, capitals pool shifted samples only, and `masterySamplesFor` scales the requirement with the lesson width so capitals asks 3 samples per letter instead of 20. The shortfall notice arrives with the result card in build-order step 9.
 
+Second slice landed in `feat(trainer): mastery-and-phases, accuracy phase then speed phase`: `unlockStatus` gains `phase`, accuracy while any new key is below its samples or above the error bar and speed once mastery holds. The floors do not change and no state is added; the wpm shortfall is reported only in the speed phase, so the card reads "accuracy phase: k errs 6%, bar 3%" or "accuracy phase: k needs 12 more samples", then "speed phase: 27 wpm, 3 short of 30", and the chip shows only the target that applies to the phase.
+
 Risk, resolved: the shortfall copy lives on the result card since build-order step 9.
 
 ### Targeted practice
@@ -111,7 +115,7 @@ Risk: commandline exec wipes a chained modal unless opensModal is set.
 
 Insert events carry the typed char, so adding typed and prev to samples is 15 lines. Dedupe wrong samples per position so stop-on-error retries count once. Hand must come from finger; the side sets in constants/keys.ts overlap. The reviewer killed write-time pruning; use caps, decay and read-time minimums.
 
-First slice: confusions only, one panel row, classification helpers with specs.
+First slice landed in `feat(trainer): pairwise-stats, confusion pairs`: `KeySample` carries `typed` (the key the typed char sits on) and `prev`, and a second wrong input at one position is dropped so stop-on-error retries count once. trainer/confusions.ts keeps a `trainerConfusions` store (version 1, per layout, expected key to typed key to count), written from onTestFinished beside recordSamples, capped at the eight most frequent typed keys per expected key and halved once a key passes 200; `worstConfusions` reads with a minimum of 3 and `classifyConfusion` names same finger, mirror hand (same finger, other hand, from keycodeToFinger), neighbour (adjacent in qwertyKeycodeKeymap) or other. The weak-keys panel shows up to four pairs as "k for d (mirror hand) ×5", tips.ts adds a tip for the worst pair after the accuracy and rhythm tips, backup v4 carries the store and "Trainer: reset key stats" clears it. The panel row and the tip appear for every user once a pair reaches 3, lesson or not, like the rest of the weak-keys panel; the position dedupe also means a retried wrong key now counts once in the key stats where it counted every retry before. `prev` is recorded but unread until bigram transitions, which are still open.
 
 Risk: at 97% accuracy the matrix stays sparse for about ten tests.
 
@@ -123,7 +127,9 @@ Attempts already hold everything for slice one; the ChartJs wrapper, time scale,
 
 First slice landed in `feat(trainer): progress-dashboard, attempts chart and lesson table`: a ChartJs line of the current layout's attempts with wpm left, accuracy right and the configured floors as annotation lines, plus a DataTable with attempts, best, last wpm and acc and state per lesson, both hidden while the layout has no attempts.
 
-Risk: deltas mean little until sample-model-v2 removes the penalty.
+Second slice landed in `feat(trainer): progress-dashboard, key history and deltas`: a `trainerKeyHistory` store (version 1, per layout, one snapshot per day of emaMs, errRate and total per key) written from recordSamples, the day's entry overwritten, kept for 90 days, in the backup as version 5 and cleared with the key stats. `keyDeltas` in trainer/history.ts compares today's stats with the newest snapshot at least seven days old and lists keys with at least 20 new samples and 15% movement in emaMs; the trainer page shows them below the table as "k is 120 ms faster than last week" or "slower", hidden without a qualifying snapshot.
+
+Risk, resolved: key stats v2 dropped the penalty before the deltas landed.
 
 ### Curriculum tracks
 
@@ -131,7 +137,9 @@ After lesson 12: capitals by hand, three punctuation steps, a space drill, then 
 
 Splitting the capitals lesson shifts indices, so this needs id-based progress from foundations C. The French track needs a dead-key table and a sampler that attributes an accented char to two keypresses, see the decisions doc.
 
-First slice: id-based lessons with the capitals split by hand, which is the prerequisite for any new track.
+First slice landed in `feat(trainer): curriculum-tracks, id-based progress and the capitals split`: Progress v3 stores `current` and `unlocked` as lesson ids per layout, `upgradeProgress` chains v1 to v2 to v3 over the frozen `LESSON_IDS_V2`, `currentLesson()` and `unlockedUpTo()` still return indices and send an unknown id to 0, and backup v3 accepts 1, 2 and 3. "capitals" became "capitals-left" and "capitals-right" from keycodeToFinger, "punctuation" became the ladder "quote-minus", "equal-brackets" and "shifted-punctuation"; the old ids migrate to "capitals-left" and "quote-minus" for attempts, bests and positions. No space drill, since the drill exists.
+
+Second slice landed in `feat(trainer): curriculum-tracks, the French accents track`: trainer/dead-keys.ts maps an accented char to `{ dead, deadLayer, legend, base }` per layout, seeded with canadian_french and matched to a layout object by where its dead legends sit. Lessons with `chars` ("accents-direct" é ç, "accents-grave" è à ù, "accents-circumflex" ê â î ô û, "accents-diaeresis" ë ï ü) resolve each char through findLayoutKey, then the table, and drop what the layout cannot type; `lessonAvailable`, `lessonNumber` and `nextLesson` hide the track and renumber the map on layouts without a table, and unlocks skip it. `samplesFromEventLog` yields a dead-key sample then a base-key sample for an accented char (the pair arrives as one input, so only the dead key carries the spacing), `lessonKeycodes` makes mastery count the dead key and `masteryOf` shares the sample budget over the keys the track resolves to, and the track is offered only while `Config.layout` is "default", since the emulator has no dead-key state; a stored current lesson the layout no longer offers falls back to the nearest one it does. Words come from the largest corpus of `Config.language`; a rare accent mixes pseudo words in once fewer than three real words carry it.
 
 Risk: the layout emulator has no dead-key state, so the French track only works on the OS layout.
 
@@ -151,7 +159,7 @@ canadian_french lesson 12 reads "z é", azerty digits resolve to layer 1. Progre
 
 lessonLegends exists, so names are about 40 lines. A layer "auto" resolved with findLayoutKey fixes digits. Dead keys have no data anywhere; use an override table seeded with canadian_french. The reviewer cut the frequency generator, plan files and motion hints.
 
-First slice: legend-derived names plus auto layer for numbers, no storage change.
+First slice landed in `feat(trainer): layout-aware-curriculum, legend-derived names and an auto layer`: `lessonName` and `lessonKeyLegend` in lessons.ts, `layer: "auto"` with a `charClass` on the numbers lesson so azerty digits resolve to the shifted layer, the home row lesson named by its legends like the two-key lessons, no storage change. Per-layout progress landed earlier with Progress v2 in foundations C. The dead-key override table belongs to curriculum-tracks.
 
 Unblocked by foundations B, which resolves the real layout.
 
@@ -161,7 +169,7 @@ Weak keys are tinted on the keymap you watch while typing. Finger and row cluste
 
 Key already layers idle colours, highlight and flash. Plumb keycode through KeyDefinition and add a config key via the finger-colours checklist. The reviewer cut the hands diagram and put heat on the border ring so finger shades stay visible.
 
-First slice: keycode plumbing, an off/speed config, a border tint.
+First slice landed in `feat(trainer): keymap-visuals, the heatmap`: `KeyDefinition.keycode` set in keymapConverter.ts (the layout indicator key is Space), a `keymapHeat` config key beside the other keymap keys in the appearance group (`"off" | "speed" | "errors"`, default off, through the schemas package, metadata, defaults, commandline metadata and list, and the settings page; it turns the keymap on like finger colours do), and `heatColors` in trainer/heat.ts: a ring colour from theme.sub to theme.error for keys with at least five timed samples in speed mode (emaMs between the layout's 20th and 80th percentile) or five samples in errors mode (errRate from 0 to 15%). Key in Keymap.tsx tints the border, not the fill, so finger shades stay visible; stats come from getLayoutStats over the reactive getConfig like the weak-keys panel. The backend validates config through the schemas package, so both docker images must be rebuilt with monkeybuild before the config PATCH accepts the key.
 
 Risk: both images must rebuild together or the config PATCH 422s.
 
@@ -188,7 +196,7 @@ Dropped by decision 2. Kept here for the record: stage one was a managed trainer
 5. states/test.ts:185 and key-stats.ts:38 map "default" to qwerty. Resolved through keymapLayout in utils/layout-name.ts; per-layout progress remains for commit C.
 6. key-stats.ts:27,84-86 folds a 5000 ms penalty into a value shown as ms. Done in key stats v2.
 7. key-stats.ts:51-59 skips deletes without advancing the clock; no pause cap. Done in key stats v2.
-8. key-stats.ts:95-111 ignores sample.shifted.
+8. `applySamples` and `updateStat` in key-stats.ts key by keycode only, so shifted keys still share the base key's stat. Dead keys are attributed since the French track: `samplesFromEventLog` emits the dead key, which carries the spacing, then the base key for an accented char.
 9. canUnlock in lessons.ts ignored perKey. Done in the mastery gate: canUnlock goes through unlockStatus and lessons.spec.ts covers the pooling and the shortfalls.
 10. lessons.ts capped attempts at 100 across all lessons. Done in foundations C: `trimAttempts` keeps 1000 overall and 50 per lesson and layout.
 11. The progress store in lessons.ts passed no migrate; backup.ts was v1-literal for progress. Done in foundations C: `upgradeProgress` runs from the localStorage hook and from the backup union.
@@ -217,15 +225,15 @@ Next, honest data and surfaces on it:
 
 Later, the French goal and the rest:
 
-14. layout-aware-curriculum: legend-derived names, auto layer, per-layout progress.
-15. curriculum-tracks: capitals by hand and the punctuation ladder, then the French accents track with a dead-key table.
-16. pairwise-stats: confusion pairs, then bigram transitions.
-17. adaptive-words: weak-key weighting and mid-lesson rebuilds.
-18. mastery-and-phases: speed and accuracy phases.
-19. keymap-visuals: the heatmap.
-20. progress-dashboard: key history and deltas.
+14. layout-aware-curriculum: legend-derived names, auto layer, per-layout progress. Done in `feat(trainer): layout-aware-curriculum, legend-derived names and an auto layer`; per-layout progress had landed with step 7.
+15. curriculum-tracks: capitals by hand and the punctuation ladder, then the French accents track with a dead-key table. Done in two commits: `feat(trainer): curriculum-tracks, id-based progress and the capitals split` and `feat(trainer): curriculum-tracks, the French accents track`; covers foundation item 8 above for dead keys.
+16. pairwise-stats: confusion pairs, then bigram transitions. Confusions done in `feat(trainer): pairwise-stats, confusion pairs`; transitions are still open.
+17. adaptive-words: weak-key weighting and mid-lesson rebuilds. Done in `feat(trainer): adaptive-words, weak-key weighting and mid-lesson rebuilds`.
+18. mastery-and-phases: speed and accuracy phases. Done in `feat(trainer): mastery-and-phases, accuracy phase then speed phase`.
+19. keymap-visuals: the heatmap. Done in `feat(trainer): keymap-visuals, the heatmap`; rebuild both images with monkeybuild before the config PATCH accepts `keymapHeat`.
+20. progress-dashboard: key history and deltas. Done in `feat(trainer): progress-dashboard, key history and deltas`.
 
-Now fixes what every later feature reads and gives the trainer its home. Next puts surfaces on data that is honest. Later needs the new data model and the layout work.
+Now fixes what every later feature reads and gives the trainer its home. Next puts surfaces on data that is honest. Later needs the new data model and the layout work. Steps 14 to 20 landed on one branch; still open from their slices: bigram transitions (16), n-gram fillers (17), the picker modal, warm-up and review.
 
 ## Working agreement
 
@@ -234,6 +242,6 @@ Every build-order step is run with the block below in its prompt. Later prompts 
 Standing requirements, carry these into every step
 - No em dashes anywhere: code, comments, commit messages, PR title and body, docs, and the next prompt you write.
 - No code comments unless a line would be misread without one. When needed, one short line saying why, never what.
-- Steps 7 to 13 go on one branch from `trainer` at b556c59 or later, one commit per step in the `feat(trainer): ...` style of the history, each step validated (specs, typecheck, lint, format, madge, headless Chromium) and its roadmap lines updated before the next step starts. Do not open a PR between steps.
-- Once step 13 is committed, spawn a subagent with model opus to review the full branch diff against origin/trainer. Ask it to check correctness, any behaviour change when no lesson is active, missing test coverage, stale line refs in docs, and violations of the two rules above. Fix what it finds and fold each fix into the step commit it belongs to with `fixup!` commits and `GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash origin/trainer`. Do this even if the diff looks small.
-- Then push the branch, open one PR against trainer, subscribe to its activity and schedule an hourly check-in until it is merged or closed. When the PR is merged, stop iterating and say so; the next prompt (step 14 onward) is written on request. If a step is blocked on a decision only the user can make, say so and stop. If the PR is closed without merging, stop and ask.
+- Steps 14 to 20 go on one branch from `trainer` at ba863f5 or later, one commit per step in the `feat(trainer): ...` style of the history (step 15 may take two, 15a and 15b), each step validated (specs, typecheck, lint, format, madge, headless Chromium) and its roadmap lines updated before the next step starts. Do not open a PR between steps.
+- Once step 20 is committed, spawn a subagent with model opus to review the full branch diff against origin/trainer. Ask it to check correctness, any behaviour change when no lesson or drill is active, missing test coverage, stale line refs in docs, and violations of the two rules above. Fix what it finds and fold each fix into the step commit it belongs to with `fixup!` commits and `GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash origin/trainer`. Expect conflicts in files every step touches (lessons.ts, lessons.spec.ts); resolve them per step rather than taking a later step's version, and set `GIT_EDITOR` to a command that strips comment lines so no squash message keeps a "# This is a combination" header. Do this even if the diff looks small.
+- Then push the branch, open one PR against trainer, subscribe to its activity and schedule an hourly check-in until it is merged or closed. When the PR is merged, stop iterating and say so; the next prompt is written on request. If a step is blocked on a decision only the user can make, say so and stop. If the PR is closed without merging, stop and ask.

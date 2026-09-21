@@ -110,6 +110,18 @@ describe("ConfigMeta", () => {
           expected: { keymapMode: "static" },
         },
       ],
+      keymapHeat: [
+        {
+          value: "speed",
+          given: { keymapMode: "next" },
+          expected: { keymapMode: "next" },
+        },
+        {
+          value: "errors",
+          given: { keymapMode: "off" },
+          expected: { keymapMode: "static" },
+        },
+      ],
       keymapSize: [
         { value: 1, expected: { keymapSize: 1 } },
         { value: 1.234, expected: { keymapSize: 1.2 } },

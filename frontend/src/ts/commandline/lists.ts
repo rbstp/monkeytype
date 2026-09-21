@@ -174,6 +174,7 @@ export const commands: CommandsSubgroup = {
       "keymapLayout",
       "keymapKeys",
       "keymapFingerColors",
+      "keymapHeat",
     ),
 
     //theme

@@ -1052,6 +1052,17 @@ export const configMetadata: ConfigMetadataObject = {
     overrideConfig: ({ currentConfig }) =>
       currentConfig.keymapMode === "off" ? { keymapMode: "static" } : {},
   },
+  keymapHeat: {
+    key: "keymapHeat",
+    fa: { icon: "fa-fire" },
+    displayString: "keymap heat",
+    changeRequiresRestart: false,
+    group: "appearance",
+    description:
+      "Tints the ring of each key with the trainer stats for it: speed from the slowest to the fastest fifth of the keys, or the error rate from 0 to 15%. Keys with fewer than five samples stay untinted.",
+    overrideConfig: ({ currentConfig }) =>
+      currentConfig.keymapMode === "off" ? { keymapMode: "static" } : {},
+  },
   keymapSize: {
     key: "keymapSize",
     fa: { icon: "fa-keyboard" },

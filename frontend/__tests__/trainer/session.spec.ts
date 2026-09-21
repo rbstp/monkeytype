@@ -7,7 +7,7 @@ import * as Core from "../../src/ts/states/core";
 import * as Lifecycle from "../../src/ts/config/lifecycle";
 import { saveFullConfigToLocalStorage } from "../../src/ts/config/persistence";
 import { setConfig } from "../../src/ts/config/setters";
-import { Config, getConfig } from "../../src/ts/config/store";
+import { Config, getConfig, setConfigStore } from "../../src/ts/config/store";
 import { __testing } from "../../src/ts/config/testing";
 import { getDefaultConfig } from "../../src/ts/constants/default-config";
 import { restartTestEvent } from "../../src/ts/events/test";
@@ -42,10 +42,15 @@ import {
   getActiveLesson,
   isSessionActive,
   largestCorpus,
+  rebuildLessonWords,
   startLesson,
   startSession,
   stopLesson,
 } from "../../src/ts/trainer/session";
+import {
+  getLayoutConfusions,
+  resetConfusions,
+} from "../../src/ts/trainer/confusions";
 import { startDrill } from "../../src/ts/trainer/drill";
 import * as JsonData from "../../src/ts/utils/json-data";
 
@@ -55,12 +60,17 @@ vi.mock("../../src/ts/test/events/stats", () => ({
   getWordBurstHistory: () => [],
 }));
 
-const qwerty = JSON.parse(
-  readFileSync(
-    `${import.meta.dirname}/../../static/layouts/qwerty.json`,
-    "utf-8",
-  ),
-) as LayoutObject;
+function readLayout(name: string): LayoutObject {
+  return JSON.parse(
+    readFileSync(
+      `${import.meta.dirname}/../../static/layouts/${name}.json`,
+      "utf-8",
+    ),
+  ) as LayoutObject;
+}
+
+const qwerty = readLayout("qwerty");
+const canadianFrench = readLayout("canadian_french");
 
 const { replaceConfig } = __testing;
 
@@ -142,6 +152,7 @@ describe("trainer session", () => {
     stopLesson();
     resetProgress();
     resetKeyStats();
+    resetConfusions();
     noticeMock.mockClear();
     successMock.mockClear();
     saveConfigMock.mockClear();
@@ -195,7 +206,7 @@ describe("trainer session", () => {
       expect(buildSpy).toHaveBeenLastCalledWith(
         expect.any(Array),
         expect.anything(),
-        { orderedByFrequency: true },
+        expect.objectContaining({ orderedByFrequency: true }),
       );
       expect(CustomText.getText()).toHaveLength(120);
 
@@ -203,7 +214,7 @@ describe("trainer session", () => {
       expect(buildSpy).toHaveBeenLastCalledWith(
         expect.any(Array),
         expect.anything(),
-        { orderedByFrequency: false },
+        expect.objectContaining({ orderedByFrequency: false }),
       );
       buildSpy.mockRestore();
     });
@@ -390,7 +401,7 @@ describe("trainer session", () => {
       ts: 0,
     });
     const stored = (attempts: Attempt[]): Progress => ({
-      version: 2 as const,
+      version: 3 as const,
       layouts: {},
       attempts,
     });
@@ -478,6 +489,146 @@ describe("trainer session", () => {
         trainerUnlock: "relaxed",
       });
       expect(unlockedUpTo()).toBe(1);
+    });
+  });
+
+  describe("rebuildLessonWords", () => {
+    const heavy = (): void =>
+      recordSamples(
+        "qwerty",
+        Array.from({ length: 30 }, () => ({
+          keycode: "KeyK" as const,
+          shifted: false,
+          correct: false,
+        })),
+      );
+
+    it("weights the pool by the current key stats", async () => {
+      const buildSpy = vi.spyOn(Lessons, "buildLessonWords");
+      heavy();
+      expect(await startLesson(0)).toBe(true);
+      expect(buildSpy).toHaveBeenLastCalledWith(
+        expect.any(Array),
+        expect.anything(),
+        expect.objectContaining({ weights: expect.objectContaining({ k: 6 }) }),
+      );
+      buildSpy.mockRestore();
+    });
+
+    it("replaces the pool of the active lesson while no test runs", async () => {
+      await startLesson(0);
+      const before = CustomText.getText();
+      heavy();
+      expect(await rebuildLessonWords()).toBe(true);
+      const after = CustomText.getText();
+      expect(after).toHaveLength(120);
+      expect(after).not.toEqual(before);
+      expect(CustomText.getLimitMode()).toBe("word");
+      expect(getActiveLesson()).toBe(0);
+    });
+
+    it("does nothing while a test is active", async () => {
+      await startLesson(0);
+      const before = CustomText.getText();
+      TestState.setTestActive(true);
+      expect(await rebuildLessonWords()).toBe(false);
+      TestState.setTestActive(false);
+      expect(CustomText.getText()).toEqual(before);
+    });
+
+    it("never touches a drill or an idle session", async () => {
+      expect(await rebuildLessonWords()).toBe(false);
+      expect(CustomText.getText()).toEqual(["before"]);
+      await startSession({
+        words: ["as"],
+        indicator: "drill",
+        limit: { mode: "time", value: 30 },
+        drill: { keys: ["KeyA"], before: {} },
+      });
+      expect(await rebuildLessonWords()).toBe(false);
+      expect(CustomText.getText()).toEqual(["as"]);
+    });
+
+    it("rebuilds after a finished lesson test on the test page", async () => {
+      const pageMock = vi.spyOn(Core, "getActivePage").mockReturnValue("test");
+      await startLesson(0);
+      const before = CustomText.getText();
+      heavy();
+      finished(["as ", "sad "]);
+      await flush();
+      await flush();
+      expect(CustomText.getText()).not.toEqual(before);
+      pageMock.mockRestore();
+    });
+
+    it("leaves the pool alone away from the test page and without a lesson", async () => {
+      const pageMock = vi
+        .spyOn(Core, "getActivePage")
+        .mockReturnValue("settings");
+      await startLesson(0);
+      const before = CustomText.getText();
+      heavy();
+      finished(["as ", "sad "]);
+      await flush();
+      await flush();
+      expect(CustomText.getText()).toEqual(before);
+      pageMock.mockRestore();
+      stopLesson();
+      finished(["hello "]);
+      await flush();
+      expect(CustomText.getText()).toEqual(["before"]);
+    });
+  });
+
+  describe("accents track", () => {
+    const grave = LESSONS.findIndex((lesson) => lesson.id === "accents-grave");
+
+    it("refuses the track on a layout that cannot type it", async () => {
+      expect(await startLesson(grave)).toBe(false);
+      expect(noticeMock).toHaveBeenCalledWith(
+        "This layout has no keys for this lesson.",
+      );
+      expect(Config.mode).toBe("time");
+    });
+
+    it("needs the OS layout, since the emulator has no dead keys", async () => {
+      replaceConfig({ mode: "time", layout: "canadian_french" });
+      getInputLayoutMock.mockResolvedValueOnce(canadianFrench);
+      expect(await startLesson(grave)).toBe(false);
+      expect(noticeMock).toHaveBeenCalledWith(
+        "Accents need the OS layout: set layout to default and pick the keymap layout.",
+      );
+      expect(Config.mode).toBe("time");
+    });
+
+    it("builds words carrying the accents from the corpus", async () => {
+      replaceConfig({
+        mode: "time",
+        layout: "default",
+        keymapLayout: "canadian_french",
+        language: "french",
+      });
+      setConfigStore("keymapLayout", "canadian_french");
+      getInputLayoutMock.mockResolvedValueOnce(canadianFrench);
+      getLanguageMock.mockResolvedValueOnce({
+        name: "french_10k",
+        words: ["très", "après", "père", "là", "déjà", "où", "sale", "les"],
+      } as never);
+      expect(await startLesson(grave)).toBe(true);
+      expect(getLanguageMock).toHaveBeenCalledWith("french_10k");
+      const words = CustomText.getText();
+      expect(words.some((word) => word.includes("è"))).toBe(true);
+      expect(words.some((word) => word.includes("à"))).toBe(true);
+      expect(words.some((word) => word.includes("ù"))).toBe(true);
+      expect(Core.getCustomTextIndicator()?.name).toBe(
+        "lesson 19: è à ù (os layout)",
+      );
+      expect(currentLesson()).toBe(grave);
+      expect(progress().layouts["canadian_french"]?.current).toBe(
+        "accents-grave",
+      );
+      stopLesson();
+      setConfigStore("keymapLayout", "overrideSync");
     });
   });
 
@@ -649,6 +800,55 @@ describe("trainer session", () => {
     });
   });
 
+  it("records confusions from the wrong inputs of any test", async () => {
+    onTestFinished({
+      eventLog: {
+        version: 1,
+        events: [
+          {
+            type: "input",
+            testMs: 100,
+            data: {
+              inputType: "insertText",
+              data: "k",
+              correct: false,
+              wordIndex: 0,
+              charIndex: 0,
+              inputValue: "",
+            },
+          },
+          {
+            type: "input",
+            testMs: 200,
+            data: {
+              inputType: "insertText",
+              data: "d",
+              correct: true,
+              wordIndex: 0,
+              charIndex: 0,
+              inputValue: "",
+            },
+          },
+        ],
+        context: {
+          targetWords: ["dad "],
+          mode: "words",
+          mode2: "10",
+          bailedOut: false,
+          koreanStatus: false,
+        },
+      },
+      completedEvent: { wpm: 40, acc: 90, bailedOut: false } as CompletedEvent,
+      invalid: false,
+      samplesUsable: true,
+      countsForLesson: true,
+    });
+    await flush();
+    expect(getLayoutConfusions("qwerty")).toEqual({ KeyD: { KeyK: 1 } });
+    expect(getKeyStats().layouts["qwerty"]?.["KeyD"]?.total).toBe(2);
+    expect(progress().attempts).toHaveLength(0);
+  });
+
   it("leaves a test alone when no lesson is active", async () => {
     finished(["hello ", "world "]);
     await flush();
@@ -702,7 +902,7 @@ describe("trainer session", () => {
     it("toasts the unlock once every new key is mastered", async () => {
       await startLesson(0);
       replaceProgress({
-        version: 2,
+        version: 3,
         layouts: {},
         attempts: [
           {

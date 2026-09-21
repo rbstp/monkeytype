@@ -13,11 +13,22 @@ import {
   importRequest,
 } from "../../../trainer/actions";
 import {
+  dayOf,
+  getLayoutHistory,
+  KeyDelta,
+  keyDeltas,
+} from "../../../trainer/history";
+import { getLayoutStats, layoutStatsName } from "../../../trainer/key-stats";
+import {
   Attempt,
   bestOf,
   criteriaFor,
   currentLesson,
+  Lesson,
+  lessonAvailable,
   lessonChars,
+  lessonName,
+  lessonNumber,
   LESSONS,
   progress,
   progressLayout,
@@ -26,6 +37,8 @@ import {
 import { getActiveLesson } from "../../../trainer/session";
 import { FaSolidIcon } from "../../../types/font-awesome";
 import { cn } from "../../../utils/cn";
+import { keycodeToLayoutKey } from "../../../utils/key-converter";
+import { resolveLayoutName } from "../../../utils/layout-name";
 import { Button } from "../../common/Button";
 import { ChartJs } from "../../common/ChartJs";
 import { Fa } from "../../common/Fa";
@@ -51,6 +64,7 @@ function stateIcon(state: LessonState, index: number): FaSolidIcon {
 
 type LessonRow = {
   index: number;
+  number: number;
   name: string;
   attempts: number;
   best: number | undefined;
@@ -67,8 +81,7 @@ function lessonColumns(): DataTableColumnDef<LessonRow>[] {
   return [
     defineColumn("index", {
       header: "lesson",
-      cell: (info) =>
-        `${info.row.original.index + 1}. ${info.row.original.name}`,
+      cell: (info) => `${info.row.original.number}. ${info.row.original.name}`,
     }),
     defineColumn("attempts", {
       header: "attempts",
@@ -100,6 +113,18 @@ function lessonColumns(): DataTableColumnDef<LessonRow>[] {
 function layoutAttempts(): Attempt[] {
   const layout = progressLayout();
   return progress().attempts.filter((attempt) => attempt.layout === layout);
+}
+
+function statsName(): string {
+  return layoutStatsName(
+    resolveLayoutName(getConfig.layout, getConfig.keymapLayout),
+    getConfig.funbox,
+  );
+}
+
+function deltaLine(delta: KeyDelta, legend: string): string {
+  const direction = delta.ms > 0 ? "slower" : "faster";
+  return `${legend} is ${Math.round(Math.abs(delta.ms))} ms ${direction} than last week`;
 }
 
 function AttemptsChart(props: { attempts: Attempt[] }): JSXElement {
@@ -207,12 +232,18 @@ function AttemptsChart(props: { attempts: Attempt[] }): JSXElement {
 }
 
 export function TrainerPage(): JSXElement {
-  const currentName = (): string => LESSONS[currentLesson()]?.name ?? "";
+  const nameOf = (lesson: Lesson): string =>
+    lessonName(lesson, inputLayoutObject());
+  const currentName = (): string => {
+    const lesson = LESSONS[currentLesson()];
+    return lesson === undefined ? "" : nameOf(lesson);
+  };
 
-  const legends = (index: number): string => {
+  const legends = (lesson: Lesson, index: number): string => {
     const layout = inputLayoutObject();
     if (layout === undefined) return "";
-    return lessonChars(index, layout).fresh.join(" ");
+    const fresh = lessonChars(index, layout).fresh.join(" ");
+    return fresh === nameOf(lesson) ? "" : fresh;
   };
 
   const bestLabel = (id: string): string => {
@@ -233,13 +264,34 @@ export function TrainerPage(): JSXElement {
   createEffectOn(importRequest, pickFile, { defer: true });
 
   const attempts = createMemo(layoutAttempts);
+  const deltas = createMemo((): KeyDelta[] =>
+    keyDeltas(
+      getLayoutHistory(statsName()),
+      getLayoutStats(statsName()),
+      dayOf(Date.now()),
+    ),
+  );
+  const keyLegend = (delta: KeyDelta): string => {
+    const layout = inputLayoutObject();
+    const label =
+      layout === undefined
+        ? undefined
+        : keycodeToLayoutKey(delta.keycode, layout);
+    return label === " " ? "space" : (label ?? delta.keycode);
+  };
+  const shown = createMemo((): { lesson: Lesson; index: number }[] =>
+    LESSONS.map((lesson, index) => ({ lesson, index })).filter(({ lesson }) =>
+      lessonAvailable(lesson, progressLayout()),
+    ),
+  );
   const rows = createMemo((): LessonRow[] =>
-    LESSONS.map((lesson, index) => {
+    shown().map(({ lesson, index }) => {
       const own = attempts().filter((attempt) => attempt.lesson === lesson.id);
       const last = own[own.length - 1];
       return {
         index,
-        name: lesson.name,
+        number: lessonNumber(index, progressLayout()),
+        name: nameOf(lesson),
         attempts: own.length,
         best: bestOf(lesson.id),
         lastWpm: last?.wpm,
@@ -278,7 +330,7 @@ export function TrainerPage(): JSXElement {
             />
             <Button
               fa={{ icon: "fa-play" }}
-              text={`continue lesson ${currentLesson() + 1}: ${currentName()}`}
+              text={`continue lesson ${lessonNumber(currentLesson(), progressLayout())}: ${currentName()}`}
               disabled={isTestActive()}
               class="px-8 py-4"
               onClick={() => void beginLesson(currentLesson())}
@@ -286,9 +338,9 @@ export function TrainerPage(): JSXElement {
           </span>
         </div>
         <div class="grid gap-2">
-          <For each={LESSONS}>
-            {(lesson, index) => {
-              const state = (): LessonState => lessonState(index());
+          <For each={shown()}>
+            {({ lesson, index }) => {
+              const state = (): LessonState => lessonState(index);
               const locked = (): boolean => state() === "locked";
               const subClass = (): string =>
                 cn("text-sub", {
@@ -309,16 +361,16 @@ export function TrainerPage(): JSXElement {
                     },
                   )}
                   onClick={() => {
-                    if (!locked()) void beginLesson(index());
+                    if (!locked()) void beginLesson(index);
                   }}
                 >
                   <span class={cn("flex items-center gap-2", subClass())}>
-                    <Fa icon={stateIcon(state(), index())} fixedWidth />
-                    {index() + 1}
+                    <Fa icon={stateIcon(state(), index)} fixedWidth />
+                    {lessonNumber(index, progressLayout())}
                   </span>
                   <span class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                    <span>{lesson.name}</span>
-                    <Show when={legends(index())}>
+                    <span>{nameOf(lesson)}</span>
+                    <Show when={legends(lesson, index)}>
                       {(text) => (
                         <span class={cn("font-mono", subClass())}>
                           {text()}
@@ -344,6 +396,16 @@ export function TrainerPage(): JSXElement {
               data={rows()}
               class="text-sm"
             />
+          </div>
+        </Show>
+        <Show when={deltas().length > 0}>
+          <div class="grid gap-2" data-testid="keyChanges">
+            <div class="text-xs text-sub">key changes</div>
+            <ul class="list-disc pl-5 text-sm text-sub">
+              <For each={deltas()}>
+                {(delta) => <li>{deltaLine(delta, keyLegend(delta))}</li>}
+              </For>
+            </ul>
           </div>
         </Show>
       </div>
