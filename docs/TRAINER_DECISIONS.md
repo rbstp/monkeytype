@@ -1,6 +1,6 @@
 # Trainer mode: decisions
 
-Settled 2026-09-20 after the expansion exploration in [TRAINER_ROADMAP.md](./TRAINER_ROADMAP.md). Each answer changes what gets built and in which order.
+Settled 2026-09-20 after the expansion exploration, which git history keeps. Each answer changes what gets built and in which order. What is built and what is left is in [TRAINER_ROADMAP.md](./TRAINER_ROADMAP.md).
 
 | # | Question | Decision | Consequence |
 |---|---|---|---|
@@ -11,6 +11,7 @@ Settled 2026-09-20 after the expansion exploration in [TRAINER_ROADMAP.md](./TRA
 | 5 | Schema bumps with migration, or additive only? | **Schema bumps are fine.** | Progress v2 (lesson ids, layout field, per-layout current and unlocked, larger attempt cap), key stats v2 (speed and error rate split), backup v2 that migrates on import. All through the existing `migrate` hook. |
 | 6 | Celebration, daily goal and streak, or honest numbers? | **Honest numbers.** | The result card says "27 wpm, 3 short of 30" with retry and next. No confetti, no streaks, no daily goal. The unlock toast stays. |
 | 7 | After the letters: quotes, code, or French accents? | **French accents.** | The curriculum track after lesson 12 is French: `é ç` on direct keys, then `è à ù` through the grave dead key, `ê â î ô û` through the circumflex, `ë ï ü` through the diaeresis. Quotes and code tracks are not planned. |
+| 8 | An azerty dead-key table beside canadian_french? | **No azerty table; the French track is canadian_french only.** | `deadKeyFor` keeps the one seeded table. A layout without one hides the accents track through `lessonAvailable` and renumbers the map, so azerty keeps the letter, capital, punctuation and number lessons and nothing else changes. |
 
 ## What the decisions drop
 
