@@ -1643,6 +1643,67 @@ describe("lessons", () => {
       expect(progress().attempts).toHaveLength(1);
     });
 
+    it("leaves an unknown stored id alone when the attempts prove nothing", () => {
+      replaceProgress({
+        version: 3,
+        layouts: {
+          qwerty: { current: "home-row", unlocked: "gone", best: {} },
+        },
+        attempts: [],
+      });
+      expect(progress().layouts["qwerty"]?.unlocked).toBe("gone");
+      expect(unlockedUpTo()).toBe(0);
+    });
+
+    it("repairs an unknown stored id to the furthest lesson the attempts earn", () => {
+      replaceProgress({
+        version: 3,
+        layouts: {
+          qwerty: { current: "home-row", unlocked: "gone", best: {} },
+        },
+        attempts: [
+          attempt("home-row", "qwerty", 40),
+          attempt("e-i", "qwerty", 40),
+        ],
+      });
+      expect(progress().layouts["qwerty"]?.unlocked).toBe("r-u");
+      expect(unlockedUpTo()).toBe(lessonIndex("r-u"));
+    });
+
+    it("never moves a resolvable pointer back to what the attempts prove", () => {
+      replaceProgress({
+        version: 3,
+        layouts: {
+          qwerty: { current: "home-row", unlocked: "numbers", best: {} },
+        },
+        attempts: [attempt("home-row", "qwerty", 40)],
+      });
+      expect(progress().layouts["qwerty"]?.unlocked).toBe("numbers");
+      expect(unlockedUpTo()).toBe(lessonIndex("numbers"));
+    });
+
+    it("still walks forward from a resolvable pointer past an unearned lesson", () => {
+      replaceProgress({
+        version: 3,
+        layouts: { qwerty: { current: "home-row", unlocked: "r-u", best: {} } },
+        attempts: [attempt("r-u", "qwerty", 40), attempt("t-y", "qwerty", 40)],
+      });
+      expect(progress().layouts["qwerty"]?.unlocked).toBe("g-h");
+    });
+
+    it("moves an unreadable pointer forward rather than leaving it stuck", () => {
+      replaceProgress({
+        version: 3,
+        layouts: {
+          qwerty: { current: "home-row", unlocked: "gone", best: {} },
+        },
+        attempts: [],
+      });
+      expect(progress().layouts["qwerty"]?.unlocked).toBe("gone");
+      expect(recordAttempt(attempt("home-row", "qwerty", 40))).toBe(true);
+      expect(progress().layouts["qwerty"]?.unlocked).toBe("e-i");
+    });
+
     it("re-evaluates unlocks per layout on replace", () => {
       const data: Progress = {
         version: 3,

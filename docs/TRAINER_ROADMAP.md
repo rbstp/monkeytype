@@ -60,6 +60,12 @@ does work`. Decisions that shaped it are in
   layout, and a best per lesson that trimming never evicts. Key stats do the
   same. `exportBackupFile` and `importBackupFile` carry version 6: key stats,
   progress, confusions, transitions and the key history.
+- An id the list cannot resolve still reads as the first lesson, since a read
+  has to land somewhere, but `unlockedAfterSync` no longer writes that reading
+  back. It walks the attempts from the first lesson through `unlockStatus` and
+  keeps the unreadable id when they earn nothing, so a hand-edited or stale id
+  is repaired to what was earned rather than reset to lesson 1. A pointer that
+  resolves is still walked forward only.
 - The trainer page shows the lesson map, a continue button, an attempts chart
   against the configured floors, a per-lesson table and the key changes from
   `keyDeltas`, which reads a cutoff `daysBefore` counts in calendar days.
@@ -134,6 +140,10 @@ does work`. Decisions that shaped it are in
 27. hardening, a reachable mastery gate. `fix(trainer): hardening, scale the
     mastery budget with the test length`: a short test no longer asks for more
     samples than its rolling window can hold.
+28. unlock-integrity, a lost pointer repairs itself. `fix(trainer):
+    unlock-integrity, repair a lost unlock pointer instead of resetting it`:
+    `indexOrFirst` stays the fail-safe read, `unlockedAfterSync` rebuilds an
+    unreadable pointer from the attempts and never persists lesson 1 over it.
 
 ## Open
 
@@ -152,24 +162,25 @@ Standing requirements, carry these into every step
 - No code comments unless a line would be misread without one. When needed, one
   short line saying why, never what. JSDoc blocks that restate a signature count
   as comments.
-- Steps 21 to 26 go on one branch from `trainer` at 40ce3b3 or later, one commit
-  per step (21 is a `docs(trainer): ...`, 26 a `fix(trainer): ...`, the rest
-  `feat(trainer): ...` in the style of the history), each step validated (specs,
-  typecheck, lint, format, madge, headless Chromium where the step touches the
-  UI) and its roadmap lines updated before the next step starts. Do not open a
-  PR between steps.
-- Once step 26 is committed, spawn a subagent with model opus to review the full
+- Steps 28 to 31 go on one branch from `trainer` at the merge of #8 or later,
+  one commit per step (28 and 30 are `fix(trainer): ...`, 29 a `feat(trainer):
+  ...`, 31 a `test(trainer): ...`), each step validated (specs, typecheck, lint,
+  format, madge, headless Chromium where the step touches the UI) and its
+  roadmap lines updated before the next step starts. Do not open a PR between
+  steps.
+- Once step 31 is committed, spawn a subagent with model opus to review the full
   branch diff against origin/trainer. Ask it to check correctness, any behaviour
   change when no lesson, drill, warm-up or review is active, missing test
-  coverage, whether the trimmed roadmap still describes the code, and violations
-  of the two rules above. Fix what it finds and fold each fix into the step
-  commit it belongs to with `fixup!` commits and `GIT_SEQUENCE_EDITOR=: git
-  rebase -i --autosquash origin/trainer`. Expect conflicts in files every step
-  touches (lessons.ts, session.ts, docs/TRAINER_ROADMAP.md); resolve them per
-  step rather than taking a later step's version, and set `GIT_EDITOR` to a
-  command that strips comment lines so no squash message keeps a "# This is a
-  combination" header. Confirm `git diff <pre-rebase tip> HEAD` is empty
-  afterwards. Do this even if the diff looks small.
+  coverage, whether the roadmap still describes the code, and violations of the
+  two rules above. Fix what it finds and fold each fix into the step commit it
+  belongs to with `fixup!` commits and `GIT_SEQUENCE_EDITOR=: git rebase -i
+  --autosquash origin/trainer`. Expect conflicts in docs/TRAINER_ROADMAP.md,
+  which every step touches: resolve them per step rather than taking a later
+  step's version, remembering that a fixup patch cut from the working tree
+  carries later steps' lines that do not exist yet at that commit. Set
+  `GIT_EDITOR` to a command that strips comment lines so no squash message keeps
+  a "# This is a combination" header. Confirm `git diff <pre-rebase tip> HEAD`
+  is empty afterwards. Do this even if the diff looks small.
 - Then push the branch, open one PR against trainer using
   .github/pull_request_template.md, subscribe to its activity and schedule an
   hourly check-in until it is merged or closed. When the PR is merged, stop

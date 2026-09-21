@@ -1058,8 +1058,9 @@ function layoutEntry(layout: string): LayoutProgress {
   return progress().layouts[layout] ?? emptyLayoutProgress();
 }
 
-// an id the list no longer knows falls back to the first lesson
-function indexOf(id: string): number {
+// a read has to land somewhere, so an id the list no longer knows reads as the
+// first lesson; a writer calls lessonIndex and decides what -1 means itself
+function indexOrFirst(id: string): number {
   return Math.max(0, lessonIndex(id));
 }
 
@@ -1078,11 +1079,14 @@ function nearestAvailable(index: number, layoutName: string): number {
 
 export function currentLesson(): number {
   const layoutName = progressLayout();
-  return nearestAvailable(indexOf(layoutEntry(layoutName).current), layoutName);
+  return nearestAvailable(
+    indexOrFirst(layoutEntry(layoutName).current),
+    layoutName,
+  );
 }
 
 export function unlockedUpTo(): number {
-  return indexOf(layoutEntry(progressLayout()).unlocked);
+  return indexOrFirst(layoutEntry(progressLayout()).unlocked);
 }
 
 export function bestOf(id: string): number | undefined {
@@ -1101,23 +1105,43 @@ function updateLayout(
     : { ...current, layouts: { ...current.layouts, [layout]: next } };
 }
 
-function unlockedAfterSync(
+function earnedUpTo(
   attempts: Attempt[],
   layout: string,
-  unlocked: string,
   criteria: UnlockCriteria,
-): string {
-  let next = indexOf(unlocked);
+  from: number,
+): number {
+  let next = from;
   for (;;) {
     const following = nextLesson(next, layout);
     if (
       following === undefined ||
       !unlockStatus(attempts, (LESSONS[next] as Lesson).id, layout, criteria).ok
     ) {
-      return (LESSONS[next] as Lesson).id;
+      return next;
     }
     next = following;
   }
+}
+
+/**
+ * Walking from the stored pointer is what keeps the sync forward-only. An id
+ * the list cannot resolve would seed that walk with lesson 0 and persist it,
+ * destroying the unlock.
+ */
+function unlockedAfterSync(
+  attempts: Attempt[],
+  layout: string,
+  unlocked: string,
+  criteria: UnlockCriteria,
+): string {
+  const stored = lessonIndex(unlocked);
+  if (stored !== -1) {
+    const walked = earnedUpTo(attempts, layout, criteria, stored);
+    return (LESSONS[walked] as Lesson).id;
+  }
+  const earned = earnedUpTo(attempts, layout, criteria, 0);
+  return earned === 0 ? unlocked : (LESSONS[earned] as Lesson).id;
 }
 
 /**
@@ -1180,7 +1204,7 @@ export function recordAttempt(attempt: Attempt): boolean {
       unlockedNow =
         next !== undefined &&
         following !== undefined &&
-        indexOf(entry.unlocked) < next &&
+        indexOrFirst(entry.unlocked) < next &&
         unlockStatus(
           attempts,
           attempt.lesson,
