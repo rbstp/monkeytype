@@ -10,7 +10,7 @@ import { EventLog } from "../test/events/types";
 import { keycodeToLayoutKey } from "../utils/key-converter";
 import { resolveLayoutName } from "../utils/layout-name";
 import { recordConfusions } from "./confusions";
-import { drillSummary } from "./drill";
+import { drillSummary, warmUpSummary } from "./drill";
 import {
   getLayoutStats,
   layoutStatsName,
@@ -76,11 +76,13 @@ export function onTestFinished(test: FinishedTest): void {
       const drill = getActiveDrill();
       if (drill !== null && recordKeys) {
         showNoticeNotification(
-          drillSummary(
-            drill,
-            getLayoutStats(statsName),
-            (keycode) => keycodeToLayoutKey(keycode, layout) ?? keycode,
-          ),
+          drill.kind === "warm-up"
+            ? warmUpSummary(test.completedEvent)
+            : drillSummary(
+                drill,
+                getLayoutStats(statsName),
+                (keycode) => keycodeToLayoutKey(keycode, layout) ?? keycode,
+              ),
           { durationMs: 8000 },
         );
       }

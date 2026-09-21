@@ -6,6 +6,8 @@ import * as TestLogic from "../../test/test-logic";
 import {
   beginDrill,
   beginLesson,
+  beginReview,
+  beginWarmUp,
   exportBackupFile,
   requestImport,
 } from "../../trainer/actions";
@@ -111,6 +113,22 @@ const commands: Command[] = [
     icon,
     available: notDuringTest,
     exec: (): void => void beginDrill(),
+  },
+  {
+    id: "trainerWarmUp",
+    display: "Trainer: warm-up",
+    alias: "start practice unlocked keys",
+    icon,
+    available: notDuringTest,
+    exec: (): void => void beginWarmUp(),
+  },
+  {
+    id: "trainerReview",
+    display: "Trainer: review",
+    alias: "practice slipped slower keys",
+    icon,
+    available: notDuringTest,
+    exec: (): void => void beginReview(),
   },
   {
     id: "trainerStop",

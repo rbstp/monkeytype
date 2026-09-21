@@ -51,7 +51,11 @@ import {
   getLayoutConfusions,
   resetConfusions,
 } from "../../src/ts/trainer/confusions";
-import { startDrill } from "../../src/ts/trainer/drill";
+import {
+  startDrill,
+  startReview,
+  startWarmUp,
+} from "../../src/ts/trainer/drill";
 import {
   getLayoutTransitions,
   resetTransitions,
@@ -111,7 +115,12 @@ function finished(targetWords: string[], flags: FinishedFlags = {}): void {
   };
   onTestFinished({
     eventLog,
-    completedEvent: { wpm: 40, acc: 100, bailedOut: false } as CompletedEvent,
+    completedEvent: {
+      wpm: 40,
+      acc: 100,
+      testDuration: 30,
+      bailedOut: false,
+    } as CompletedEvent,
     invalid: false,
     samplesUsable: true,
     countsForLesson: true,
@@ -548,10 +557,24 @@ describe("trainer session", () => {
         words: ["as"],
         indicator: "drill",
         limit: { mode: "time", value: 30 },
-        drill: { keys: ["KeyA"], before: {} },
+        drill: { kind: "drill", keys: ["KeyA"], before: {} },
       });
       expect(await rebuildLessonWords()).toBe(false);
       expect(CustomText.getText()).toEqual(["as"]);
+    });
+
+    it("never touches a warm-up or a review either", async () => {
+      for (const kind of ["warm-up", "review"] as const) {
+        await startSession({
+          words: ["as"],
+          indicator: kind,
+          limit: { mode: "time", value: 30 },
+          drill: { kind, keys: [], before: {} },
+        });
+        expect(await rebuildLessonWords()).toBe(false);
+        expect(CustomText.getText()).toEqual(["as"]);
+        stopLesson();
+      }
     });
 
     it("rebuilds after a finished lesson test on the test page", async () => {
@@ -677,11 +700,12 @@ describe("trainer session", () => {
           words: ["as"],
           indicator: "drill",
           limit: { mode: "time", value: 30 },
-          drill: { keys: ["KeyA"], before: { KeyA: 300 } },
+          drill: { kind: "drill", keys: ["KeyA"], before: { KeyA: 300 } },
         }),
       ).toBe(true);
       expect(getActiveLesson()).toBeNull();
       expect(getActiveDrill()).toEqual({
+        kind: "drill",
         keys: ["KeyA"],
         before: { KeyA: 300 },
       });
@@ -702,7 +726,7 @@ describe("trainer session", () => {
         words: ["as"],
         indicator: "drill",
         limit: { mode: "time", value: 30 },
-        drill: { keys: ["KeyA"], before: {} },
+        drill: { kind: "drill", keys: ["KeyA"], before: {} },
       });
       expect(setConfig("punctuation", true)).toBe(true);
       expect(getActiveDrill()).toBeNull();
@@ -715,7 +739,7 @@ describe("trainer session", () => {
         words: ["as"],
         indicator: "drill",
         limit: { mode: "time", value: 30 },
-        drill: { keys: ["KeyA"], before: {} },
+        drill: { kind: "drill", keys: ["KeyA"], before: {} },
       });
       expect(setConfig("trainerWordsPerTest", 20)).toBe(true);
       expect(CustomText.getLimitMode()).toBe("time");
@@ -774,6 +798,91 @@ describe("trainer session", () => {
       );
       expect(noticeMock).toHaveBeenCalledWith(
         "k: no time to no time, d: 700 ms to 700 ms, f: 650 ms to 650 ms",
+        { durationMs: 8000 },
+      );
+    });
+  });
+
+  describe("warm-up and review", () => {
+    const samples = (
+      keycode: "KeyK" | "KeyD" | "KeyA",
+      ms: number,
+    ): KeySample[] =>
+      Array.from({ length: 6 }, () => ({
+        keycode,
+        shifted: false,
+        correct: keycode !== "KeyK",
+        spacingMs: ms,
+      }));
+
+    it("warms up over every character the unlocked lessons teach", async () => {
+      replaceProgress({
+        version: 3,
+        layouts: { qwerty: { current: "home-row", unlocked: "r-u", best: {} } },
+        attempts: [],
+      });
+      getLanguageMock.mockResolvedValueOnce({
+        name: "english",
+        words: ["sure", "reads", "fluid", "dials"],
+      } as never);
+
+      expect(await startWarmUp()).toBe(true);
+      expect(getActiveLesson()).toBeNull();
+      expect(getActiveDrill()).toEqual({
+        kind: "warm-up",
+        keys: [],
+        before: {},
+      });
+      expect(Core.getCustomTextIndicator()?.name).toBe("warm-up");
+      expect(CustomText.getLimitMode()).toBe("time");
+      expect(CustomText.getLimitValue()).toBe(30);
+
+      const words = CustomText.getText();
+      const allowed = new Set(lessonChars(2, qwerty).allowed);
+      const homeRow = new Set(lessonChars(0, qwerty).allowed);
+      for (const word of words) {
+        for (const char of word) expect(allowed.has(char)).toBe(true);
+      }
+      expect(
+        words.some((word) => [...word].some((char) => !homeRow.has(char))),
+      ).toBe(true);
+
+      finished(["sad "]);
+      await flush();
+      expect(progress().attempts).toHaveLength(0);
+      expect(getKeyStats().layouts["qwerty"]?.["KeyS"]?.total).toBe(1);
+      expect(noticeMock).toHaveBeenCalledWith("warm-up done, 20 words", {
+        durationMs: 8000,
+      });
+    });
+
+    it("refuses a review while nothing has slipped", async () => {
+      expect(await startReview()).toBe(false);
+      expect(noticeMock).toHaveBeenCalledWith("Nothing to review yet");
+      expect(getActiveDrill()).toBeNull();
+      expect(Config.mode).toBe("time");
+    });
+
+    it("reviews the unlocked keys that slipped and records no attempt", async () => {
+      recordSamples("qwerty", [
+        ...samples("KeyK", 900),
+        ...samples("KeyD", 700),
+        ...samples("KeyA", 200),
+      ]);
+
+      expect(await startReview()).toBe(true);
+      expect(getActiveLesson()).toBeNull();
+      expect(getActiveDrill()?.kind).toBe("review");
+      expect(getActiveDrill()?.keys).toEqual(["KeyK", "KeyD"]);
+      expect(getActiveDrill()?.before).toMatchObject({ KeyD: 700 });
+      expect(Core.getCustomTextIndicator()?.name).toBe("review: k d");
+      expect(CustomText.getLimitValue()).toBe(30);
+
+      finished(["dad "]);
+      await flush();
+      expect(progress().attempts).toHaveLength(0);
+      expect(noticeMock).toHaveBeenCalledWith(
+        "k: no time to no time, d: 700 ms to 700 ms",
         { durationMs: 8000 },
       );
     });
@@ -892,7 +1001,12 @@ describe("trainer session", () => {
           koreanStatus: false,
         },
       },
-      completedEvent: { wpm: 40, acc: 100, bailedOut: false } as CompletedEvent,
+      completedEvent: {
+        wpm: 40,
+        acc: 100,
+        testDuration: 30,
+        bailedOut: false,
+      } as CompletedEvent,
       invalid: false,
       samplesUsable: true,
       countsForLesson: true,

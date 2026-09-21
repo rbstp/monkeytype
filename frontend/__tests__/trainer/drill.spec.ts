@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildDrillWords, drillSummary } from "../../src/ts/trainer/drill";
+import {
+  buildDrillWords,
+  drillSummary,
+  reviewKeys,
+  warmUpSummary,
+} from "../../src/ts/trainer/drill";
+import { KeyDelta } from "../../src/ts/trainer/history";
+import { KeyStat, LayoutStats } from "../../src/ts/trainer/key-stats";
 
 function seeded(seed: number): () => number {
   let state = seed;
@@ -90,7 +97,11 @@ describe("drill", () => {
     it("prints before and after per key", () => {
       expect(
         drillSummary(
-          { keys: ["KeyK", "KeyD"], before: { KeyK: 512.4, KeyD: 0 } },
+          {
+            kind: "drill",
+            keys: ["KeyK", "KeyD"],
+            before: { KeyK: 512.4, KeyD: 0 },
+          },
           {
             KeyK: {
               emaMs: 480.2,
@@ -104,6 +115,66 @@ describe("drill", () => {
           (keycode) => keycode.slice(3).toLowerCase(),
         ),
       ).toBe("k: 512 ms to 480 ms, d: no time to no time");
+    });
+  });
+
+  describe("warmUpSummary", () => {
+    it("counts the words of the completed event", () => {
+      expect(warmUpSummary({ wpm: 40, testDuration: 30 })).toBe(
+        "warm-up done, 20 words",
+      );
+    });
+  });
+
+  describe("reviewKeys", () => {
+    const stat = (overrides: Partial<KeyStat>): KeyStat => ({
+      emaMs: 200,
+      timed: 40,
+      errRate: 0,
+      total: 40,
+      errors: 0,
+      lastSeen: 0,
+      ...overrides,
+    });
+    const stats: LayoutStats = {
+      KeyD: stat({ errRate: 0.2, errors: 8 }),
+      KeyK: stat({ emaMs: 900 }),
+      KeyS: stat({}),
+      KeyF: stat({}),
+      KeyA: stat({}),
+      KeyQ: stat({ emaMs: 800 }),
+    };
+    const deltas: KeyDelta[] = [
+      { keycode: "KeyS", ms: 140, since: "2026-09-01" },
+      { keycode: "KeyF", ms: -200, since: "2026-09-01" },
+      { keycode: "KeyQ", ms: 300, since: "2026-09-01" },
+    ];
+    const unlocked = ["KeyD", "KeyK", "KeyS", "KeyF", "KeyA"] as const;
+
+    it("takes the labelled keys first, then the ones a week slowed down", () => {
+      expect(reviewKeys(stats, deltas, [...unlocked])).toEqual([
+        "KeyD",
+        "KeyK",
+        "KeyS",
+      ]);
+    });
+
+    it("stays inside the unlocked keys and stops at the count", () => {
+      expect(reviewKeys(stats, deltas, [...unlocked, "KeyQ"])).toEqual([
+        "KeyD",
+        "KeyK",
+        "KeyQ",
+        "KeyS",
+      ]);
+      expect(reviewKeys(stats, deltas, [...unlocked], 2)).toEqual([
+        "KeyD",
+        "KeyK",
+      ]);
+    });
+
+    it("finds nothing when every key is fine", () => {
+      expect(reviewKeys({ KeyA: stat({}) }, [], ["KeyA"])).toEqual([]);
+      expect(reviewKeys(stats, deltas, [])).toEqual([]);
     });
   });
 });

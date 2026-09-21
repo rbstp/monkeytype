@@ -42,9 +42,12 @@ does work`. Decisions that shaped it are in
   corpus, and falls back to alternating vowels and consonants when the allowed
   letters carry fewer than fifty pairs, which is where the home row sits. The
   ladder rarely needs a filler at all, so the walk mostly serves the drill.
-- `startSession` in session.ts prepares any custom test from a word pool.
-  `startDrill` runs 30 seconds on the three worst keys with a before and after
-  notice, and never records a lesson attempt.
+- `startSession` in session.ts prepares any custom test from a word pool, and
+  its `Drill.kind` tells the three targeted sessions apart. `startDrill` runs 30
+  seconds on the three worst keys, `startReview` on the unlocked keys that
+  `reviewKeys` finds slow, error-prone or slower than last week, and
+  `startWarmUp` over every character the unlocked lessons teach. None of them
+  records a lesson attempt, shows the chip, or lets `rebuildLessonWords` run.
 - The config cannot leak: lifecycle.ts sets the store before it fires the
   finished event, the persisted config hook in session.ts keeps lesson values
   out of the saved config, and index.ts scores an attempt only when
@@ -119,12 +122,12 @@ does work`. Decisions that shaped it are in
 24. trainer-page, the picker. `feat(trainer): trainer-page, pick a lesson from
     a modal`: LessonPickerModal.tsx behind the chip and a command, over a
     shared `lessonState`.
+25. targeted-practice, warm-up and review. `feat(trainer): targeted-practice,
+    a warm-up and a review beside the drill`: `startWarmUp` and `startReview`
+    over a `Drill.kind`, with commands, actions and page buttons.
 
 ## Open
 
-- Warm-up and review. A zero-decision 30 second start over every unlocked
-  character, and a session on the keys that went backwards. Neither may record
-  a lesson attempt, and the chip stays hidden through both.
 - Calendar days in history.ts. `daysBefore` subtracts a fixed day length from a
   local midnight, so the 90-day prune and the 7-day delta cutoff land a day out
   across a DST change. Subtract calendar days instead.

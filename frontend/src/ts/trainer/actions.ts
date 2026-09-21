@@ -9,7 +9,7 @@ import {
 import * as TestLogic from "../test/test-logic";
 import { download } from "../utils/misc";
 import { exportBackup, importBackup } from "./backup";
-import { startDrill } from "./drill";
+import { startDrill, startReview, startWarmUp } from "./drill";
 import { unlockedUpTo } from "./lessons";
 import { startLesson } from "./session";
 
@@ -34,6 +34,18 @@ export async function beginLesson(index: number): Promise<boolean> {
 
 export async function beginDrill(): Promise<boolean> {
   if (!(await startDrill())) return false;
+  await showTest();
+  return true;
+}
+
+export async function beginWarmUp(): Promise<boolean> {
+  if (!(await startWarmUp())) return false;
+  await showTest();
+  return true;
+}
+
+export async function beginReview(): Promise<boolean> {
+  if (!(await startReview())) return false;
   await showTest();
   return true;
 }

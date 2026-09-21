@@ -8,6 +8,8 @@ import { inputLayoutObject, isTestActive } from "../../../states/test";
 import { getTheme } from "../../../states/theme";
 import {
   beginLesson,
+  beginReview,
+  beginWarmUp,
   exportBackupFile,
   importBackupFile,
   importRequest,
@@ -318,6 +320,20 @@ export function TrainerPage(): JSXElement {
               class="hidden"
               data-testid="trainerImportFile"
               onChange={onFileChosen}
+            />
+            <Button
+              fa={{ icon: "fa-fire" }}
+              text="warm-up"
+              variant="text"
+              disabled={isTestActive()}
+              onClick={() => void beginWarmUp()}
+            />
+            <Button
+              fa={{ icon: "fa-history" }}
+              text="review"
+              variant="text"
+              disabled={isTestActive()}
+              onClick={() => void beginReview()}
             />
             <Button
               fa={{ icon: "fa-play" }}
