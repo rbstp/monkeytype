@@ -8,6 +8,7 @@ import {
   exportBackupFile,
   requestImport,
 } from "../../trainer/actions";
+import { resetConfusions } from "../../trainer/confusions";
 import { resetKeyStats } from "../../trainer/key-stats";
 import {
   currentLesson,
@@ -134,6 +135,7 @@ const commands: Command[] = [
     available: notDuringTest,
     exec: (): void => {
       resetKeyStats();
+      resetConfusions();
       showSuccessNotification("Key stats reset");
     },
   },

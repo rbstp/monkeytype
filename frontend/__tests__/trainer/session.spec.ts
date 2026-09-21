@@ -46,6 +46,10 @@ import {
   startSession,
   stopLesson,
 } from "../../src/ts/trainer/session";
+import {
+  getLayoutConfusions,
+  resetConfusions,
+} from "../../src/ts/trainer/confusions";
 import { startDrill } from "../../src/ts/trainer/drill";
 import * as JsonData from "../../src/ts/utils/json-data";
 
@@ -147,6 +151,7 @@ describe("trainer session", () => {
     stopLesson();
     resetProgress();
     resetKeyStats();
+    resetConfusions();
     noticeMock.mockClear();
     successMock.mockClear();
     saveConfigMock.mockClear();
@@ -704,6 +709,55 @@ describe("trainer session", () => {
       expect(getKeyStats().layouts["qwerty"]).toBeUndefined();
       expect(progress().attempts).toHaveLength(0);
     });
+  });
+
+  it("records confusions from the wrong inputs of any test", async () => {
+    onTestFinished({
+      eventLog: {
+        version: 1,
+        events: [
+          {
+            type: "input",
+            testMs: 100,
+            data: {
+              inputType: "insertText",
+              data: "k",
+              correct: false,
+              wordIndex: 0,
+              charIndex: 0,
+              inputValue: "",
+            },
+          },
+          {
+            type: "input",
+            testMs: 200,
+            data: {
+              inputType: "insertText",
+              data: "d",
+              correct: true,
+              wordIndex: 0,
+              charIndex: 0,
+              inputValue: "",
+            },
+          },
+        ],
+        context: {
+          targetWords: ["dad "],
+          mode: "words",
+          mode2: "10",
+          bailedOut: false,
+          koreanStatus: false,
+        },
+      },
+      completedEvent: { wpm: 40, acc: 90, bailedOut: false } as CompletedEvent,
+      invalid: false,
+      samplesUsable: true,
+      countsForLesson: true,
+    });
+    await flush();
+    expect(getLayoutConfusions("qwerty")).toEqual({ KeyD: { KeyK: 1 } });
+    expect(getKeyStats().layouts["qwerty"]?.["KeyD"]?.total).toBe(2);
+    expect(progress().attempts).toHaveLength(0);
   });
 
   it("leaves a test alone when no lesson is active", async () => {

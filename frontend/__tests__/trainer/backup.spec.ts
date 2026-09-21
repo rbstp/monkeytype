@@ -4,6 +4,11 @@ import {
   importBackup,
   parseBackup,
 } from "../../src/ts/trainer/backup";
+import {
+  getLayoutConfusions,
+  recordConfusions,
+  resetConfusions,
+} from "../../src/ts/trainer/confusions";
 import { getKeyStats, recordSamples } from "../../src/ts/trainer/key-stats";
 import {
   currentLesson,
@@ -17,17 +22,39 @@ describe("backup", () => {
       { keycode: "KeyA", shifted: false, correct: true },
     ]);
     setCurrentLesson(3);
+    resetConfusions();
+    recordConfusions("qwerty", [
+      { keycode: "KeyD", shifted: false, correct: false, typed: "KeyK" },
+    ]);
     const json = exportBackup();
 
     recordSamples("qwerty", [
       { keycode: "KeyA", shifted: false, correct: false },
     ]);
+    recordConfusions("qwerty", [
+      { keycode: "KeyD", shifted: false, correct: false, typed: "KeyK" },
+    ]);
     setCurrentLesson(0);
     expect(importBackup(json)).toBe(true);
 
     expect(getKeyStats().layouts["qwerty"]?.["KeyA"]?.total).toBe(1);
+    expect(getLayoutConfusions("qwerty")).toEqual({ KeyD: { KeyK: 1 } });
     expect(currentLesson()).toBe(3);
-    expect(JSON.parse(json)).toMatchObject({ version: 3 });
+    expect(JSON.parse(json)).toMatchObject({ version: 4 });
+  });
+
+  it("starts confusions empty when an older backup lacks them", () => {
+    recordConfusions("qwerty", [
+      { keycode: "KeyD", shifted: false, correct: false, typed: "KeyK" },
+    ]);
+    const json = JSON.stringify({
+      version: 3,
+      keyStats: { version: 2, layouts: {} },
+      progress: { version: 3, layouts: {}, attempts: [] },
+    });
+    expect(importBackup(json)).toBe(true);
+    expect(getLayoutConfusions("qwerty")).toEqual({});
+    expect(exportBackup()).toContain('"version":4');
   });
 
   it("upgrades a version 1 backup on import", () => {
@@ -44,7 +71,7 @@ describe("backup", () => {
         ],
       },
     });
-    expect(parseBackup(json)).toMatchObject({ version: 3 });
+    expect(parseBackup(json)).toMatchObject({ version: 4 });
     expect(importBackup(json)).toBe(true);
     expect(progress()).toEqual({
       version: 3,
@@ -62,7 +89,7 @@ describe("backup", () => {
         },
       ],
     });
-    expect(exportBackup()).toContain('"version":3');
+    expect(exportBackup()).toContain('"version":4');
   });
 
   it("upgrades a version 2 backup on import and keeps the unlocked lesson", () => {

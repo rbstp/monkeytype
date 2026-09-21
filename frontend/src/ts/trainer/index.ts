@@ -8,6 +8,7 @@ import { __nonReactive } from "../states/test";
 import { EventLog } from "../test/events/types";
 import { keycodeToLayoutKey } from "../utils/key-converter";
 import { resolveLayoutName } from "../utils/layout-name";
+import { recordConfusions } from "./confusions";
 import { drillSummary } from "./drill";
 import {
   getLayoutStats,
@@ -62,7 +63,10 @@ export function onTestFinished(test: FinishedTest): void {
     .getInputLayout()
     .then((layout) => {
       const samples = samplesFromEventLog(test.eventLog, layout);
-      if (recordKeys) recordSamples(statsName, samples);
+      if (recordKeys) {
+        recordSamples(statsName, samples);
+        recordConfusions(statsName, samples);
+      }
       const drill = getActiveDrill();
       if (drill !== null && recordKeys) {
         showNoticeNotification(

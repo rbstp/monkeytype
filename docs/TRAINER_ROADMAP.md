@@ -15,7 +15,7 @@ Strengths:
 Gaps:
 
 - The chip at LessonNotice.tsx names the active lesson, its best and the target on the test screen; the result card at LessonResultCard.tsx prints the shortfall or the unlock with retry and next. The unlock toast in trainer/index.ts stays.
-- Key stats v2 keeps speed apart from errors: emaMs takes only correct, non-recovery samples with pauses capped at three times the average, errRate is its own moving average, and deletes advance the clock. Shift is still folded into the base key in key-stats.ts; an accented char typed through a dead key counts for the dead key, which carries the spacing, and the base key since the French track. Panel and tips label keys slow or error-prone.
+- Key stats v2 keeps speed apart from errors: emaMs takes only correct, non-recovery samples with pauses capped at three times the average, errRate is its own moving average, and deletes advance the clock. Shift is still folded into the base key in key-stats.ts; an accented char typed through a dead key counts for the dead key, which carries the spacing, and the base key since the French track. Panel and tips label keys slow or error-prone, and name the worst confusion pairs since pairwise-stats.
 - Unlocks read the configured floor through criteriaFor and, since the mastery gate, `masteryOf` in lessons.ts pools perKey over the last three attempts: a new key needs its share of a 60-sample budget (20 for a two-key lesson, 4 for capitals left, 6 for capitals right) and at most 3% errors before `unlockStatus` says ok. The result card prints the first shortfall.
 - Early lessons read real words since the adaptive-words slice: `largestCorpus` in session.ts loads english_10k, `buildLessonWords` draws by damped rank when the corpus is ordered by frequency and never mutates a real word. The 120-word pool is still built once per startLesson; weak-key weighting and mid-lesson rebuilds are build-order step 17.
 - Lesson names follow the layout since layout-aware-curriculum: `lessonName` in lessons.ts joins the fresh legends for the lessons whose name is their qwerty legends and keeps the fixed names, `lessonKeyLegend` resolves the numbers through `layer: "auto"`, and every surface (page, chip, card, indicator, toast, commandline) reads it. "default" resolves through keymapLayout in utils/layout-name.ts, and progress is per layout since Progress v2: `progressLayout()` in lessons.ts names the entry that `currentLesson()`, `unlockedUpTo()` and `bestOf()` read.
@@ -111,7 +111,7 @@ Risk: commandline exec wipes a chained modal unless opensModal is set.
 
 Insert events carry the typed char, so adding typed and prev to samples is 15 lines. Dedupe wrong samples per position so stop-on-error retries count once. Hand must come from finger; the side sets in constants/keys.ts overlap. The reviewer killed write-time pruning; use caps, decay and read-time minimums.
 
-First slice: confusions only, one panel row, classification helpers with specs.
+First slice landed in `feat(trainer): pairwise-stats, confusion pairs`: `KeySample` carries `typed` (the key the typed char sits on) and `prev`, and a second wrong input at one position is dropped so stop-on-error retries count once. trainer/confusions.ts keeps a `trainerConfusions` store (version 1, per layout, expected key to typed key to count), written from onTestFinished beside recordSamples, capped at the eight most frequent typed keys per expected key and halved once a key passes 200; `worstConfusions` reads with a minimum of 3 and `classifyConfusion` names same finger, mirror hand (same finger, other hand, from keycodeToFinger), neighbour (adjacent in qwertyKeycodeKeymap) or other. The weak-keys panel shows up to four pairs as "k for d (mirror hand) ×5", tips.ts adds a tip for the worst pair after the accuracy and rhythm tips, backup v4 carries the store and "Trainer: reset key stats" clears it. The panel row and the tip appear for every user once a pair reaches 3, lesson or not, like the rest of the weak-keys panel; the position dedupe also means a retried wrong key now counts once in the key stats where it counted every retry before. `prev` is recorded but unread until bigram transitions, which are still open.
 
 Risk: at 97% accuracy the matrix stays sparse for about ten tests.
 
@@ -221,7 +221,7 @@ Later, the French goal and the rest:
 
 14. layout-aware-curriculum: legend-derived names, auto layer, per-layout progress. Done in `feat(trainer): layout-aware-curriculum, legend-derived names and an auto layer`; per-layout progress had landed with step 7.
 15. curriculum-tracks: capitals by hand and the punctuation ladder, then the French accents track with a dead-key table. Done in two commits: `feat(trainer): curriculum-tracks, id-based progress and the capitals split` and `feat(trainer): curriculum-tracks, the French accents track`; covers foundation item 8 above for dead keys.
-16. pairwise-stats: confusion pairs, then bigram transitions.
+16. pairwise-stats: confusion pairs, then bigram transitions. Confusions done in `feat(trainer): pairwise-stats, confusion pairs`; transitions are still open.
 17. adaptive-words: weak-key weighting and mid-lesson rebuilds.
 18. mastery-and-phases: speed and accuracy phases.
 19. keymap-visuals: the heatmap.

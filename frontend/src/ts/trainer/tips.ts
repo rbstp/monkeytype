@@ -1,5 +1,13 @@
+import { ConfusionKind } from "./confusions";
 import { Finger, FINGER_LABEL, FINGERS } from "./finger";
 import { accuracy, FingerSummary, RankedKey } from "./key-stats";
+
+export type ConfusionTip = {
+  expected: string;
+  typed: string;
+  kind: ConfusionKind;
+  count: number;
+};
 
 type TipInput = {
   wpm?: number;
@@ -9,6 +17,7 @@ type TipInput = {
   afkShare?: number;
   fingers: Record<Finger, FingerSummary>;
   weakKeys: (RankedKey & { legend: string })[];
+  confusions?: ConfusionTip[];
 };
 
 const targetAcc = 97;
@@ -87,8 +96,30 @@ function keysTip(input: TipInput): string | undefined {
   return `${parts.join(", ")}. Say each letter as you press it for a few tests.`;
 }
 
+const confusionAdvice: Record<ConfusionKind, string> = {
+  "same finger":
+    "the same finger reaches the wrong row, so land on the home key between words",
+  "mirror hand":
+    "the same finger on the other hand answers, so say the letter before the reach",
+  neighbour:
+    "the finger drifts one key over, so keep the wrist still and let the finger travel",
+  other:
+    "an unrelated key answers, so slow down on that letter for a few tests",
+};
+
+function confusionTip(input: TipInput): string | undefined {
+  const worst = input.confusions?.[0];
+  if (worst === undefined) return undefined;
+  return `You press ${worst.typed} when you mean ${worst.expected} (${worst.kind}, ${worst.count} times): ${confusionAdvice[worst.kind]}.`;
+}
+
 export function buildTips(input: TipInput): string[] {
-  return [accuracyTip(input), rhythmTip(input), keysTip(input)]
+  return [
+    accuracyTip(input),
+    rhythmTip(input),
+    confusionTip(input),
+    keysTip(input),
+  ]
     .filter((tip): tip is string => tip !== undefined)
     .slice(0, maxTips);
 }

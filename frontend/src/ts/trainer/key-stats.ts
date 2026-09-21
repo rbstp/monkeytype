@@ -56,6 +56,8 @@ export type KeySample = {
   correct: boolean;
   spacingMs?: number;
   recovery?: true;
+  typed?: Keycode;
+  prev?: Keycode;
 };
 
 const emptyStat = (now: number): KeyStat => ({
@@ -77,7 +79,8 @@ export function layoutStatsName(layout: LayoutName, funbox: string[]): string {
  * ignored. Deletes advance the clock and mark the next insert as a recovery,
  * so the time spent fixing a typo is not charged to the key typed after it.
  * A dead-key pair arrives as one input, so only the dead key carries the
- * spacing.
+ * spacing; a second wrong input at one position is dropped so a stop-on-error
+ * retry counts once.
  */
 export function samplesFromEventLog(
   eventLog: EventLog,
@@ -86,6 +89,11 @@ export function samplesFromEventLog(
   const samples: KeySample[] = [];
   let previousMs: number | undefined;
   let recovering = false;
+  const wrongAt = new Set<string>();
+  const push = (sample: KeySample): void => {
+    const prev = samples[samples.length - 1]?.keycode;
+    samples.push(prev === undefined ? sample : { ...sample, prev });
+  };
 
   for (const event of eventLog.events) {
     if (event.type !== "input") continue;
@@ -109,37 +117,43 @@ export function samplesFromEventLog(
     if (expected === undefined) continue;
     if (expected === " " && event.data.commitsWord !== true) continue;
 
-    const timing: Pick<KeySample, "spacingMs" | "recovery"> = {
+    if (!event.data.correct) {
+      const position = `${event.data.wordIndex}:${event.data.charIndex}`;
+      if (wrongAt.has(position)) continue;
+      wrongAt.add(position);
+    }
+
+    const typed = findLayoutKey(event.data.data, layout)?.keycode;
+    const shared: Pick<KeySample, "spacingMs" | "recovery" | "typed"> = {
       ...(spacingMs !== undefined ? { spacingMs } : {}),
       ...(recovery ? { recovery: true } : {}),
+      ...(typed !== undefined ? { typed } : {}),
     };
     const found = findLayoutKey(expected, layout);
     if (found !== undefined) {
-      samples.push({
+      push({
         keycode: found.keycode,
         shifted: isShiftedLayer(found.layer),
         correct: event.data.correct,
-        ...timing,
+        ...shared,
       });
       continue;
     }
     const dead = deadKeyFor(expected, layout);
     if (dead === undefined) continue;
-    const { spacingMs: _pair, ...untimed } = timing;
-    samples.push(
-      {
-        keycode: dead.dead,
-        shifted: isShiftedLayer(dead.deadLayer),
-        correct: event.data.correct,
-        ...timing,
-      },
-      {
-        keycode: dead.base,
-        shifted: false,
-        correct: event.data.correct,
-        ...untimed,
-      },
-    );
+    push({
+      keycode: dead.dead,
+      shifted: isShiftedLayer(dead.deadLayer),
+      correct: event.data.correct,
+      ...shared,
+    });
+    const { spacingMs: _pair, ...untimed } = shared;
+    push({
+      keycode: dead.base,
+      shifted: false,
+      correct: event.data.correct,
+      ...untimed,
+    });
   }
 
   return samples;

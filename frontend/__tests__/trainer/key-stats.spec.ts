@@ -97,13 +97,84 @@ describe("key-stats", () => {
       );
 
       expect(samples).toEqual<KeySample[]>([
-        { keycode: "KeyA", shifted: false, correct: true },
-        { keycode: "KeyS", shifted: false, correct: false, spacingMs: 200 },
-        { keycode: "KeyS", shifted: false, correct: true, spacingMs: 100 },
-        { keycode: "Space", shifted: false, correct: true, spacingMs: 100 },
-        { keycode: "KeyD", shifted: false, correct: true, spacingMs: 100 },
-        { keycode: "KeyF", shifted: false, correct: false, spacingMs: 100 },
+        { keycode: "KeyA", shifted: false, correct: true, typed: "KeyA" },
+        {
+          keycode: "KeyS",
+          shifted: false,
+          correct: false,
+          spacingMs: 200,
+          typed: "KeyX",
+          prev: "KeyA",
+        },
+        {
+          keycode: "KeyS",
+          shifted: false,
+          correct: true,
+          spacingMs: 100,
+          typed: "KeyS",
+          prev: "KeyS",
+        },
+        {
+          keycode: "Space",
+          shifted: false,
+          correct: true,
+          spacingMs: 100,
+          typed: "Space",
+          prev: "KeyS",
+        },
+        {
+          keycode: "KeyD",
+          shifted: false,
+          correct: true,
+          spacingMs: 100,
+          typed: "KeyD",
+          prev: "Space",
+        },
+        {
+          keycode: "KeyF",
+          shifted: false,
+          correct: false,
+          spacingMs: 100,
+          typed: "Space",
+          prev: "KeyD",
+        },
       ]);
+    });
+
+    it("collapses repeated wrong inputs at one position into one sample", () => {
+      const samples = samplesFromEventLog(
+        log([
+          input(0, 0, 0, "a", true),
+          input(100, 0, 1, "x", false, { inputStopped: true }),
+          input(200, 0, 1, "x", false, { inputStopped: true }),
+          input(300, 0, 1, "k", false, { inputStopped: true }),
+          input(400, 0, 1, "s", true),
+          input(500, 1, 0, "x", false),
+        ]),
+        qwerty,
+      );
+      expect(
+        samples.map((sample) => [sample.keycode, sample.correct, sample.typed]),
+      ).toEqual([
+        ["KeyA", true, "KeyA"],
+        ["KeyS", false, "KeyX"],
+        ["KeyS", true, "KeyS"],
+        ["KeyD", false, "KeyX"],
+      ]);
+      expect(samples[2]?.spacingMs).toBe(100);
+    });
+
+    it("leaves typed out when the layout has no key for the character", () => {
+      const samples = samplesFromEventLog(
+        log([input(0, 0, 0, "ñ", false), input(100, 0, 1, "s", true)]),
+        qwerty,
+      );
+      expect(samples[0]).toEqual({
+        keycode: "KeyA",
+        shifted: false,
+        correct: false,
+      });
+      expect(samples[1]?.prev).toBe("KeyA");
     });
 
     it("skips extra characters at the separator and flags shifted keys", () => {
@@ -116,7 +187,7 @@ describe("key-stats", () => {
       );
 
       expect(samples).toEqual<KeySample[]>([
-        { keycode: "KeyA", shifted: true, correct: true },
+        { keycode: "KeyA", shifted: true, correct: true, typed: "KeyA" },
       ]);
     });
 
@@ -133,6 +204,7 @@ describe("key-stats", () => {
         keycode: "KeyE",
         shifted: false,
         correct: true,
+        prev: "Quote",
       });
     });
 
@@ -152,16 +224,36 @@ describe("key-stats", () => {
 
       expect(samples).toEqual<KeySample[]>([
         { keycode: "Quote", shifted: false, correct: true },
-        { keycode: "KeyE", shifted: false, correct: true },
-        { keycode: "KeyS", shifted: false, correct: true, spacingMs: 300 },
+        { keycode: "KeyE", shifted: false, correct: true, prev: "Quote" },
+        {
+          keycode: "KeyS",
+          shifted: false,
+          correct: true,
+          spacingMs: 300,
+          typed: "KeyS",
+          prev: "KeyE",
+        },
         {
           keycode: "BracketRight",
           shifted: true,
           correct: false,
           spacingMs: 200,
+          prev: "KeyS",
         },
-        { keycode: "KeyU", shifted: false, correct: false },
-        { keycode: "Slash", shifted: false, correct: true, spacingMs: 200 },
+        {
+          keycode: "KeyU",
+          shifted: false,
+          correct: false,
+          prev: "BracketRight",
+        },
+        {
+          keycode: "Slash",
+          shifted: false,
+          correct: true,
+          spacingMs: 200,
+          typed: "Slash",
+          prev: "KeyU",
+        },
       ]);
     });
 
@@ -207,16 +299,32 @@ describe("key-stats", () => {
       );
 
       expect(samples).toEqual<KeySample[]>([
-        { keycode: "KeyA", shifted: false, correct: true },
-        { keycode: "KeyS", shifted: false, correct: false, spacingMs: 100 },
+        { keycode: "KeyA", shifted: false, correct: true, typed: "KeyA" },
+        {
+          keycode: "KeyS",
+          shifted: false,
+          correct: false,
+          spacingMs: 100,
+          typed: "KeyX",
+          prev: "KeyA",
+        },
         {
           keycode: "KeyS",
           shifted: false,
           correct: true,
           spacingMs: 100,
           recovery: true,
+          typed: "KeyS",
+          prev: "KeyS",
         },
-        { keycode: "Space", shifted: false, correct: true, spacingMs: 100 },
+        {
+          keycode: "Space",
+          shifted: false,
+          correct: true,
+          spacingMs: 100,
+          typed: "Space",
+          prev: "KeyS",
+        },
       ]);
     });
 
@@ -246,6 +354,8 @@ describe("key-stats", () => {
         correct: true,
         spacingMs: 300,
         recovery: true,
+        typed: "KeyS",
+        prev: "KeyS",
       });
     });
 
@@ -271,6 +381,7 @@ describe("key-stats", () => {
           correct: true,
           spacingMs: 200,
           recovery: true,
+          typed: "KeyA",
         },
       ]);
     });

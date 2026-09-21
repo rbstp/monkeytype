@@ -31,6 +31,29 @@ const key = (
 });
 
 describe("tips", () => {
+  it("names the worst confusion and what to do about it", () => {
+    const tips = buildTips({
+      acc: 98,
+      consistency: 80,
+      fingers: fingers(),
+      weakKeys: [],
+      confusions: [
+        { expected: "d", typed: "k", kind: "mirror hand", count: 5 },
+        { expected: "a", typed: "s", kind: "neighbour", count: 3 },
+      ],
+    });
+    expect(tips[1]).toBe(
+      "You press k when you mean d (mirror hand, 5 times): the same finger on the other hand answers, so say the letter before the reach.",
+    );
+    expect(tips).toHaveLength(2);
+  });
+
+  it("skips the confusion tip without confusions", () => {
+    expect(
+      buildTips({ acc: 98, fingers: fingers(), weakKeys: [], confusions: [] }),
+    ).toHaveLength(1);
+  });
+
   it("asks for accuracy first when below target", () => {
     const tips = buildTips({
       wpm: 40,
