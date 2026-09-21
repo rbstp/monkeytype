@@ -1,7 +1,17 @@
 import { readFileSync } from "fs";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  MockInstance,
+  vi,
+} from "vitest";
 import { LayoutObject } from "@monkeytype/schemas/layouts";
+import { TrainerUnlock } from "@monkeytype/schemas/configs";
 import { setConfigStore } from "../../src/ts/config/store";
+import * as Notifications from "../../src/ts/states/notifications";
 import {
   Attempt,
   bestOf,
@@ -36,6 +46,7 @@ import {
   trimAttempts,
   unlockBlocker,
   unlockedUpTo,
+  UnlockCriteria,
   unlockStatus,
   UnlockStatus,
   upgradeProgress,
@@ -1439,8 +1450,10 @@ describe("lessons", () => {
       ).toBe("accuracy phase: KeyI needs 20 more samples");
     });
 
-    it("says only the phase when nothing is short and no key is weak", () => {
-      expect(blocker({}, attempt({ acc: 99 }))).toBe("accuracy phase");
+    it("names the accuracy target when nothing is short and no key is weak", () => {
+      expect(blocker({}, attempt({ acc: 99 }))).toBe(
+        "accuracy phase: target 97%",
+      );
     });
   });
 
@@ -1893,17 +1906,184 @@ describe("lessons", () => {
       expect(progress().layouts["qwerty"]?.unlocked).toBe("g-h");
     });
 
-    it("moves an unreadable pointer forward rather than leaving it stuck", () => {
-      replaceProgress({
-        version: 3,
-        layouts: {
-          qwerty: { current: "home-row", unlocked: "gone", best: {} },
-        },
-        attempts: [],
+    describe("recording against an unreadable pointer", () => {
+      let noticeMock: MockInstance<typeof Notifications.showNoticeNotification>;
+
+      afterEach(() => {
+        vi.restoreAllMocks();
+        localStorage.removeItem("trainerProgress");
+        vi.resetModules();
       });
-      expect(progress().layouts["qwerty"]?.unlocked).toBe("gone");
-      expect(recordAttempt(attempt("home-row", "qwerty", 40))).toBe(true);
-      expect(progress().layouts["qwerty"]?.unlocked).toBe("e-i");
+
+      // the fresh import gets its own notification module, so spy on that one
+      async function loaded(
+        unlocked: string,
+        attempts: Attempt[],
+      ): Promise<typeof import("../../src/ts/trainer/lessons")> {
+        localStorage.setItem(
+          "trainerProgress",
+          JSON.stringify({
+            version: 3,
+            layouts: { qwerty: { current: "home-row", unlocked, best: {} } },
+            attempts,
+          }),
+        );
+        vi.resetModules();
+        const notifications = await import("../../src/ts/states/notifications");
+        noticeMock = vi
+          .spyOn(notifications, "showNoticeNotification")
+          .mockReturnValue(0);
+        return import("../../src/ts/trainer/lessons");
+      }
+
+      it("moves it to what the attempts earn", async () => {
+        const fresh = await loaded("gone", []);
+        expect(fresh.progress().layouts["qwerty"]?.unlocked).toBe("gone");
+        expect(fresh.recordAttempt(attempt("home-row", "qwerty", 40))).toBe(
+          true,
+        );
+        expect(fresh.progress().layouts["qwerty"]?.unlocked).toBe("e-i");
+        expect(noticeMock).toHaveBeenCalledWith(
+          "Trainer: an unreadable unlock was rebuilt from your attempts, qwerty through lesson 2.",
+          { durationMs: 8000 },
+        );
+      });
+
+      it("never moves it back below what the attempts prove", async () => {
+        const fresh = await loaded("gone", [
+          attempt("home-row", "qwerty", 40),
+          attempt("e-i", "qwerty", 40),
+        ]);
+        expect(fresh.progress().layouts["qwerty"]?.unlocked).toBe("gone");
+        expect(fresh.recordAttempt(attempt("home-row", "qwerty", 40))).toBe(
+          false,
+        );
+        expect(fresh.progress().layouts["qwerty"]?.unlocked).toBe("r-u");
+        expect(noticeMock).toHaveBeenCalledWith(
+          "Trainer: an unreadable unlock was rebuilt from your attempts, qwerty through lesson 3.",
+          { durationMs: 8000 },
+        );
+      });
+
+      it("leaves it alone while the attempts prove nothing", async () => {
+        const fresh = await loaded("gone", []);
+        expect(
+          fresh.recordAttempt({
+            ...attempt("home-row", "qwerty", 40),
+            perKey: {},
+          }),
+        ).toBe(false);
+        expect(fresh.progress().layouts["qwerty"]?.unlocked).toBe("gone");
+        expect(noticeMock).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("the repair notice", () => {
+      let noticeMock: MockInstance<typeof Notifications.showNoticeNotification>;
+
+      beforeEach(() => {
+        noticeMock = vi
+          .spyOn(Notifications, "showNoticeNotification")
+          .mockReturnValue(0);
+      });
+
+      afterEach(() => {
+        vi.restoreAllMocks();
+      });
+
+      it("names the lesson a rebuilt pointer landed on", () => {
+        replaceProgress({
+          version: 3,
+          layouts: {
+            qwerty: { current: "home-row", unlocked: "gone", best: {} },
+          },
+          attempts: [
+            attempt("home-row", "qwerty", 40),
+            attempt("e-i", "qwerty", 40),
+          ],
+        });
+        expect(noticeMock).toHaveBeenCalledTimes(1);
+        expect(noticeMock).toHaveBeenCalledWith(
+          "Trainer: an unreadable unlock was rebuilt from your attempts, qwerty through lesson 3.",
+          { durationMs: 8000 },
+        );
+      });
+
+      it("writes the layout with underscores as spaces", () => {
+        replaceProgress({
+          version: 3,
+          layouts: {
+            canadian_french: {
+              current: "home-row",
+              unlocked: "gone",
+              best: {},
+            },
+          },
+          attempts: [attempt("home-row", "canadian_french", 40)],
+        });
+        expect(noticeMock).toHaveBeenCalledWith(
+          "Trainer: an unreadable unlock was rebuilt from your attempts, canadian french through lesson 2.",
+          { durationMs: 8000 },
+        );
+      });
+
+      it("names every layout it repaired in one notice", () => {
+        replaceProgress({
+          version: 3,
+          layouts: {
+            qwerty: { current: "home-row", unlocked: "gone", best: {} },
+            dvorak: { current: "home-row", unlocked: "vanished", best: {} },
+          },
+          attempts: [
+            attempt("home-row", "qwerty", 40),
+            attempt("e-i", "qwerty", 40),
+            attempt("home-row", "dvorak", 40),
+          ],
+        });
+        expect(noticeMock).toHaveBeenCalledTimes(1);
+        expect(noticeMock).toHaveBeenCalledWith(
+          "Trainer: an unreadable unlock was rebuilt from your attempts, qwerty through lesson 3, dvorak through lesson 2.",
+          { durationMs: 8000 },
+        );
+      });
+
+      it("says nothing for a pointer merely walked forward", () => {
+        replaceProgress({
+          version: 3,
+          layouts: {
+            qwerty: { current: "home-row", unlocked: "home-row", best: {} },
+          },
+          attempts: [attempt("home-row", "qwerty", 40)],
+        });
+        expect(progress().layouts["qwerty"]?.unlocked).toBe("e-i");
+        expect(noticeMock).not.toHaveBeenCalled();
+      });
+
+      it("says nothing when an unreadable pointer is left alone", () => {
+        replaceProgress({
+          version: 3,
+          layouts: {
+            qwerty: { current: "home-row", unlocked: "gone", best: {} },
+          },
+          attempts: [],
+        });
+        expect(progress().layouts["qwerty"]?.unlocked).toBe("gone");
+        expect(noticeMock).not.toHaveBeenCalled();
+      });
+
+      it("announces the same repair once per load", () => {
+        const data: Progress = {
+          version: 3,
+          layouts: {
+            qwerty: { current: "home-row", unlocked: "gone", best: {} },
+          },
+          attempts: [attempt("home-row", "qwerty", 40)],
+        };
+        replaceProgress(data);
+        replaceProgress(data);
+        expect(progress().layouts["qwerty"]?.unlocked).toBe("e-i");
+        expect(noticeMock).toHaveBeenCalledTimes(1);
+      });
     });
 
     it("re-evaluates unlocks per layout on replace", () => {
@@ -1919,6 +2099,107 @@ describe("lessons", () => {
       replaceProgress(data);
       expect(progress().layouts["qwerty"]?.unlocked).toBe("r-u");
       expect(progress().layouts["dvorak"]?.unlocked).toBe("e-i");
+    });
+  });
+
+  describe("ladder reachability", () => {
+    // what a real window gives one key, derived here rather than read from the
+    // budget under test
+    const windowShare = (wordsPerTest: number, width: number): number =>
+      Math.max(1, Math.floor((3 * wordsPerTest * 2) / (3 * width)));
+
+    const feed = (
+      lesson: Lesson,
+      layout: LayoutObject,
+      layoutName: string,
+      criteria: UnlockCriteria,
+      wordsPerTest: number,
+    ): Attempt[] => {
+      const keys = lessonKeycodes(lesson, layout);
+      const pooled = windowShare(wordsPerTest, Math.max(1, keys.length));
+      return Array.from({ length: 3 }, (_, round) => ({
+        lesson: lesson.id,
+        layout: layoutName,
+        wpm: criteria.minWpm,
+        acc: criteria.minAcc,
+        perKey: Object.fromEntries(
+          keys.map((keycode) => [
+            keycode,
+            {
+              total: Math.floor(pooled / 3) + (round < pooled % 3 ? 1 : 0),
+              errors: 0,
+            },
+          ]),
+        ),
+        ts: round,
+      }));
+    };
+
+    beforeEach(() => {
+      setConfigStore("layout", "default");
+    });
+
+    afterEach(() => {
+      setConfigStore("layout", "default");
+      setConfigStore("keymapLayout", "overrideSync");
+      setConfigStore("trainerUnlock", "normal");
+      setConfigStore("trainerWordsPerTest", 40);
+    });
+
+    it("passes every lesson at every unlock setting and test length", () => {
+      const layouts: [string, LayoutObject][] = [
+        ["qwerty", qwerty],
+        ["canadian_french", canadianFrench],
+      ];
+      const unlocks: TrainerUnlock[] = ["relaxed", "normal", "strict"];
+      const lengths = [10, 25, 40, 100, 200];
+      const unreachable: string[] = [];
+      let checked = 0;
+
+      for (const [layoutName, layout] of layouts) {
+        setConfigStore(
+          "keymapLayout",
+          layoutName === "qwerty" ? "overrideSync" : "canadian_french",
+        );
+        for (const unlock of unlocks) {
+          setConfigStore("trainerUnlock", unlock);
+          const criteria = criteriaFor(unlock);
+          for (const wordsPerTest of lengths) {
+            setConfigStore("trainerWordsPerTest", wordsPerTest);
+            for (const lesson of LESSONS) {
+              if (!lessonAvailable(lesson, layoutName)) continue;
+              checked++;
+              const attempts = feed(
+                lesson,
+                layout,
+                layoutName,
+                criteria,
+                wordsPerTest,
+              );
+              const status = unlockStatus(
+                attempts,
+                lesson.id,
+                layoutName,
+                criteria,
+              );
+              if (!status.ok) {
+                const weak = status.weakKeys[0];
+                unreachable.push(
+                  `${layoutName} ${unlock} ${wordsPerTest} words ${lesson.id}: ${
+                    weak === undefined
+                      ? `phase ${status.phase}`
+                      : `${weak.keycode} has ${weak.samples} of ${weak.required}`
+                  }`,
+                );
+              }
+            }
+          }
+        }
+      }
+
+      expect(unreachable).toEqual([]);
+      // 18 lessons on qwerty and 22 on canadian_french, over 3 settings and 5 lengths
+      expect(checked).toBe(15 * (18 + 22));
     });
   });
 });

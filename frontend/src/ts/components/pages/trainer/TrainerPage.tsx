@@ -411,7 +411,9 @@ export function TrainerPage(): JSXElement {
         </div>
         <Show when={attempts().length > 0}>
           <div class="grid gap-4">
-            <div class="text-xs text-sub">attempts on this layout</div>
+            <div class="text-xs text-sub">
+              attempts on {progressLayout().replace(/_/g, " ")}
+            </div>
             <AttemptsChart attempts={attempts()} />
             <DataTable
               id="trainerLessons"

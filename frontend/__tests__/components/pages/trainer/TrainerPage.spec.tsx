@@ -305,6 +305,40 @@ describe("TrainerPage", () => {
     expect(rows[12]).toHaveTextContent("13. capitals left");
   });
 
+  it("names the layout the attempts chart is drawn from", () => {
+    replaceProgress({
+      version: 3,
+      layouts: {
+        qwerty: { current: "home-row", unlocked: "home-row", best: {} },
+      },
+      attempts: [
+        attempt("home-row", 40, 99),
+        attempt("home-row", 38, 99, "dvorak"),
+      ],
+    });
+    render(() => <TrainerPage />);
+    expect(screen.getByText("attempts on qwerty")).toBeInTheDocument();
+    setConfigStore("layout", "dvorak");
+    expect(screen.getByText("attempts on dvorak")).toBeInTheDocument();
+  });
+
+  it("names the layout the default resolves to, underscores as spaces", () => {
+    replaceProgress({
+      version: 3,
+      layouts: {
+        canadian_french: {
+          current: "home-row",
+          unlocked: "home-row",
+          best: {},
+        },
+      },
+      attempts: [attempt("home-row", 40, 99, "canadian_french")],
+    });
+    setConfigStore("keymapLayout", "canadian_french");
+    render(() => <TrainerPage />);
+    expect(screen.getByText("attempts on canadian french")).toBeInTheDocument();
+  });
+
   it("hides the accents track on a layout without dead keys and numbers the rest", () => {
     render(() => <TrainerPage />);
     const map = screen

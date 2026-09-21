@@ -5,6 +5,7 @@ import { Config, getConfig } from "../config/store";
 import { Keycode, qwertyKeycodeKeymap } from "../constants/keys";
 import { configEvent } from "../events/config";
 import { useLocalStorage } from "../hooks/useLocalStorage";
+import { showNoticeNotification } from "../states/notifications";
 import { findLayoutKey, keycodeToLayoutKey } from "../utils/key-converter";
 import { resolveLayoutName } from "../utils/layout-name";
 import { deadKeyFor, hasDeadKeys } from "./dead-keys";
@@ -1091,7 +1092,8 @@ export function unlockBlocker(
     return `accuracy phase: ${accLine}`;
   }
   const weak = status.weakKeys[0];
-  if (weak === undefined) return "accuracy phase";
+  // a track learns its keys from the attempts, so the first test has no key to name
+  if (weak === undefined) return `accuracy phase: target ${criteria.minAcc}%`;
   if (weak.samples < weak.required) {
     return `accuracy phase: ${legend(weak)} needs ${weak.required - weak.samples} more samples`;
   }
@@ -1213,6 +1215,23 @@ function unlockedAfterSync(
   return earned === 0 ? unlocked : (LESSONS[earned] as Lesson).id;
 }
 
+type UnlockRepair = { layout: string; unlocked: string };
+
+let repairAnnounced = false;
+
+function announceRepairs(repairs: UnlockRepair[]): void {
+  if (repairAnnounced || repairs.length === 0) return;
+  repairAnnounced = true;
+  const lines = repairs.map(
+    ({ layout, unlocked }) =>
+      `${layout.replace(/_/g, " ")} through lesson ${lessonNumber(indexOrFirst(unlocked), layout)}`,
+  );
+  showNoticeNotification(
+    `Trainer: an unreadable unlock was rebuilt from your attempts, ${lines.join(", ")}.`,
+    { durationMs: 8000 },
+  );
+}
+
 /**
  * Re-evaluates the stored attempts against the current criteria, so a change to
  * the criteria applies to lessons already practised instead of only to the next
@@ -1220,6 +1239,7 @@ function unlockedAfterSync(
  */
 function syncUnlocked(): void {
   const criteria = criteriaFor(Config.trainerUnlock);
+  const repairs: UnlockRepair[] = [];
   setProgress((current) => {
     const layouts = new Set([
       ...Object.keys(current.layouts),
@@ -1234,11 +1254,17 @@ function syncUnlocked(): void {
           entry.unlocked,
           criteria,
         );
-        return unlocked === entry.unlocked ? entry : { ...entry, unlocked };
+        if (unlocked === entry.unlocked) return entry;
+        // walking a pointer the list still resolves is ordinary progress
+        if (lessonIndex(entry.unlocked) === -1) {
+          repairs.push({ layout, unlocked });
+        }
+        return { ...entry, unlocked };
       });
     }
     return next;
   });
+  announceRepairs(repairs);
 }
 
 configEvent.subscribe(({ key }) => {
@@ -1265,28 +1291,45 @@ export function recordAttempt(attempt: Attempt): boolean {
   const index = lessonIndex(attempt.lesson);
   if (index === -1) return false;
   let unlockedNow = false;
+  const criteria = criteriaFor(Config.trainerUnlock);
+  const repairs: UnlockRepair[] = [];
   setProgress((current) => {
     const attempts = trimAttempts([...current.attempts, attempt]);
     const next = nextLesson(index, attempt.layout);
     return updateLayout({ ...current, attempts }, attempt.layout, (entry) => {
       const following = next === undefined ? undefined : LESSONS[next];
-      unlockedNow =
+      const stored = lessonIndex(entry.unlocked);
+      let unlocked = entry.unlocked;
+      if (stored === -1) {
+        // an id nobody can resolve is no evidence, so the attempts alone say
+        // how far the pointer reaches, as they do in unlockedAfterSync
+        const earned = earnedUpTo(attempts, attempt.layout, criteria, 0);
+        const lesson = LESSONS[earned];
+        unlockedNow =
+          earned >
+          earnedUpTo(
+            trimAttempts(current.attempts),
+            attempt.layout,
+            criteria,
+            0,
+          );
+        if (earned > 0 && lesson !== undefined) {
+          unlocked = lesson.id;
+          repairs.push({ layout: attempt.layout, unlocked });
+        }
+      } else if (
         next !== undefined &&
         following !== undefined &&
-        indexOrFirst(entry.unlocked) < next &&
-        unlockStatus(
-          attempts,
-          attempt.lesson,
-          attempt.layout,
-          criteriaFor(Config.trainerUnlock),
-        ).ok;
+        stored < next &&
+        unlockStatus(attempts, attempt.lesson, attempt.layout, criteria).ok
+      ) {
+        unlockedNow = true;
+        unlocked = following.id;
+      }
       const known = entry.best[attempt.lesson];
       return {
         ...entry,
-        unlocked:
-          unlockedNow && following !== undefined
-            ? following.id
-            : entry.unlocked,
+        unlocked,
         best: {
           ...entry.best,
           [attempt.lesson]:
@@ -1295,11 +1338,14 @@ export function recordAttempt(attempt: Attempt): boolean {
       };
     });
   });
+  announceRepairs(repairs);
   return unlockedNow;
 }
 
 export function resetProgress(): void {
   setProgress(emptyProgress());
+  // a later repair is a new one, not the one already reported
+  repairAnnounced = false;
 }
 
 export function replaceProgress(data: Progress): void {

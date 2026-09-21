@@ -120,29 +120,36 @@ describe("drill", () => {
   });
 
   describe("warmUpSummary", () => {
-    const log = (commits: boolean[]): EventLog => ({
-      version: 1,
-      events: commits.map((commitsWord, index) => ({
-        type: "input",
-        testMs: index * 100,
-        data: {
-          inputType: "insertText",
-          data: commitsWord ? " " : "a",
-          correct: true,
-          wordIndex: 0,
-          charIndex: index,
-          inputValue: "",
-          commitsWord: commitsWord ? true : undefined,
+    const log = (commits: boolean[], words?: number[]): EventLog => {
+      let word = 0;
+      return {
+        version: 1,
+        events: commits.map((commitsWord, index) => {
+          const wordIndex = words?.[index] ?? word;
+          if (commitsWord) word = wordIndex + 1;
+          return {
+            type: "input",
+            testMs: index * 100,
+            data: {
+              inputType: "insertText",
+              data: commitsWord ? " " : "a",
+              correct: true,
+              wordIndex,
+              charIndex: index,
+              inputValue: "",
+              commitsWord: commitsWord ? true : undefined,
+            },
+          };
+        }),
+        context: {
+          targetWords: [],
+          mode: "custom",
+          mode2: "custom",
+          bailedOut: false,
+          koreanStatus: false,
         },
-      })),
-      context: {
-        targetWords: [],
-        mode: "custom",
-        mode2: "custom",
-        bailedOut: false,
-        koreanStatus: false,
-      },
-    });
+      };
+    };
 
     it("counts the words committed in the log, not the wpm over the clock", () => {
       expect(warmUpSummary(log([false, false, true, false, true]))).toBe(
@@ -152,6 +159,16 @@ describe("drill", () => {
 
     it("counts nothing when no word was committed", () => {
       expect(warmUpSummary(log([false, false]))).toBe("warm-up done, 0 words");
+    });
+
+    it("counts a word committed twice once", () => {
+      expect(warmUpSummary(log([true, false, true], [0, 0, 0]))).toBe(
+        "warm-up done, 1 word",
+      );
+    });
+
+    it("says word in the singular", () => {
+      expect(warmUpSummary(log([false, true]))).toBe("warm-up done, 1 word");
     });
 
     it("ignores a delete, which carries no commit flag at all", () => {

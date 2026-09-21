@@ -15,15 +15,18 @@ does work`. Decisions that shaped it are in
   card, indicator, toast and commandline all read them. `resolveLayoutName`
   maps "default" to the real keymap layout.
 - The chip from LessonNotice.tsx names the active lesson, its best and the
-  target the phase asks for, and opens LessonPickerModal.tsx, which lists the
+  blocker holding it, and opens LessonPickerModal.tsx, which lists the
   lessons of the current layout with the `lessonState` the trainer page reads.
   LessonResultCard.tsx prints the shortfall or the unlock with retry and next;
   the unlock toast lives in trainer/index.ts.
 - `unlockBlocker` beside `unlockStatus` builds the one sentence naming what is
   holding a lesson: the weakest key and what it needs, or the wpm shortfall in
-  the speed phase. The result card reads it, and `lessonBlocker` beside
-  `lessonState` feeds it to the map row and the picker row of the lesson being
-  practised, and to no other row. Nothing short means no sentence.
+  the speed phase. The result card and the chip read it, and `lessonBlocker`
+  beside `lessonState` feeds it to the map row and the picker row of the lesson
+  being practised, and to no other row. Nothing short means no sentence, which
+  the chip prints as "passed" since it holds the slot while you type. A track
+  whose keys are not known yet names the accuracy floor, since it has no key to
+  name.
 - Key stats keep speed apart from errors: `emaMs` takes only correct,
   non-recovery samples with pauses capped at three times the average, `errRate`
   is its own moving average, and deletes advance the clock. Shift is folded
@@ -43,6 +46,10 @@ does work`. Decisions that shaped it are in
   holds. The card and the chip show only what the phase asks for.
   `masterySamplesFor` scales that budget with `trainerWordsPerTest` and caps it
   at what three attempts can show, since the window rolls rather than adds up.
+  A table in lessons.spec.ts walks the whole ladder for every `trainerUnlock`
+  crossed with the test lengths from the schema floor to its ceiling, on qwerty
+  and canadian_french, so a budget that asks for more than the window can hold
+  fails a spec instead of locking a lesson for good.
 - Lessons read real words. `largestCorpus` loads english_10k,
   `buildLessonWords` draws by damped rank when the corpus is ordered by
   frequency and never mutates a real word, the 120-word pool is weighted by
@@ -62,9 +69,11 @@ does work`. Decisions that shaped it are in
   `reviewKeys` finds slow, error-prone or slower than last week, and
   `startWarmUp` over every character the unlocked lessons teach. None of them
   records a lesson attempt, shows the chip, or lets `rebuildLessonWords` run.
-  `warmUpSummary` counts the words committed in the event log, not wpm over the
-  clock, which measured five-character units; the word in progress when the
-  clock runs out was never committed, so it is not counted.
+  `warmUpSummary` counts the distinct word indices the event log commits, not
+  wpm over the clock, which measured five-character units, and not every
+  `commitsWord`, since backspacing over a word boundary commits the same word
+  again; the word in progress when the clock runs out was never committed, so
+  it is not counted.
 - The config cannot leak: lifecycle.ts sets the store before it fires the
   finished event, the persisted config hook in session.ts keeps lesson values
   out of the saved config, and index.ts scores an attempt only when
@@ -80,11 +89,18 @@ does work`. Decisions that shaped it are in
   back. It walks the attempts from the first lesson through `unlockStatus` and
   keeps the unreadable id when they earn nothing, so a hand-edited or stale id
   is repaired to what was earned rather than reset to lesson 1. A pointer that
-  resolves is still walked forward only.
+  resolves is still walked forward only. `syncUnlocked` runs on every
+  `fullConfigChangeFinished`, on every unlock change and on a backup import, so
+  it collects only the writes that replaced an unreadable id and says once per
+  page load which layout and lesson the pointer landed on. `recordAttempt`
+  reads an unreadable id the same way rather than through `indexOrFirst`, so
+  the guarantee holds in one module instead of resting on the sync running
+  first, and a pointer it rebuilds says so through the same notice.
 - The trainer page shows the lesson map, a continue button, an attempts chart
-  against the configured floors, a per-lesson table and the key changes from
-  `keyDeltas`, which reads a cutoff `daysBefore` counts in calendar days.
-  `heatColors` tints the keymap's border ring by speed or errors.
+  against the configured floors and named for the layout `progressLayout`
+  resolves, a per-lesson table and the key changes from `keyDeltas`, which
+  reads a cutoff `daysBefore` counts in calendar days. `heatColors` tints the
+  keymap's border ring by speed or errors.
 
 ## Done
 
@@ -171,6 +187,27 @@ does work`. Decisions that shaped it are in
     the two one-line fixes their asserts demanded, and the warm-up and review
     finish notices read back from headless Chromium.
 
+32. chip-legibility, the fourth reader. `feat(trainer): chip-legibility, read
+    the blocker on the test chip`: the chip drops the phase floor it was
+    guessing and reads `unlockBlocker`, so the card, the map, the picker and
+    the chip say one thing.
+
+33. legibility, say where you are. `feat(trainer): legibility, name the layout
+    and the repaired unlock`: the attempts chart names the layout it is drawn
+    from, and a pointer rebuilt from the attempts says so once per page load
+    instead of changing the map in silence.
+
+34. honesty, the warm-up count and a local unlock invariant. `fix(trainer):
+    honesty, count warm-up words once and read a lost pointer locally`: the
+    warm-up counts distinct committed words and says "1 word", and
+    `recordAttempt` decides for itself what an unresolvable unlock id means and
+    reports the pointer it rebuilds.
+
+35. ladder-reachability. `test(trainer): ladder-reachability, walk the ladder
+    at every setting`: one table over the three unlock settings, five test
+    lengths and two layouts, feeding each lesson the share of the window a real
+    pool delivers, so the arithmetic step 27 fixed cannot rot.
+
 ## Open
 
 - The layout emulator has no dead-key state, so the French track works on the OS
@@ -188,13 +225,13 @@ Standing requirements, carry these into every step
 - No code comments unless a line would be misread without one. When needed, one
   short line saying why, never what. JSDoc blocks that restate a signature count
   as comments.
-- Steps 28 to 31 go on one branch from `trainer` at the merge of #8 or later,
-  one commit per step (28 and 30 are `fix(trainer): ...`, 29 a `feat(trainer):
-  ...`, 31 a `test(trainer): ...`), each step validated (specs, typecheck, lint,
+- Steps 32 to 35 go on one branch from `trainer` at the merge of #9 or later,
+  one commit per step (32 and 33 are `feat(trainer): ...`, 34 a `fix(trainer):
+  ...`, 35 a `test(trainer): ...`), each step validated (specs, typecheck, lint,
   format, madge, headless Chromium where the step touches the UI) and its
   roadmap lines updated before the next step starts. Do not open a PR between
   steps.
-- Once step 31 is committed, spawn a subagent with model opus to review the full
+- Once step 35 is committed, spawn a subagent with model opus to review the full
   branch diff against origin/trainer. Ask it to check correctness, any behaviour
   change when no lesson, drill, warm-up or review is active, missing test
   coverage, whether the roadmap still describes the code, and violations of the
