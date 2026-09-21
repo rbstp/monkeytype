@@ -449,6 +449,24 @@ describe("lessons", () => {
       expect(corpus.walks()).toBe(1);
     });
 
+    it("never draws a filler shorter than minLength from a dead end", () => {
+      // every continuation of the start letters sits outside the lesson, so
+      // the walk has nowhere to go after the first character
+      const corpus = Array.from({ length: 30 }, (_unused, index) => {
+        const tail = alphabet[(index % 20) + 4] as string;
+        return `a${tail}${alphabet[(index % 19) + 5] as string}`;
+      });
+      const table = bigramTable(corpus, alphabet);
+      expect(table.pairs).toBeGreaterThanOrEqual(50);
+      const words = buildLessonWords(
+        [],
+        { allowed: ["a", "b", "c"], fresh: [] },
+        { count: 30, minLength: 3, random: seeded(11), bigrams: table },
+      );
+      expect(words).toHaveLength(30);
+      for (const word of words) expect(word.length).toBeGreaterThanOrEqual(3);
+    });
+
     it("takes a ready table without walking the corpus", () => {
       const corpus = countingCorpus(["as", "lad"]);
       buildLessonWords(

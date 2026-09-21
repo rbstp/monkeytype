@@ -49,7 +49,8 @@ does work`. Decisions that shaped it are in
   `charWeights`, and `rebuildLessonWords` recomputes it after every finished
   lesson test. `pseudoWord` fills the gaps by walking the `bigramTable` of the
   corpus, and falls back to alternating vowels and consonants when the allowed
-  letters carry fewer than fifty pairs, which is where the home row sits. The
+  letters carry fewer than fifty pairs, which is where the home row sits, or
+  when the walk dead-ends under the length floor every real word clears. The
   ladder rarely needs a filler at all, so the walk mostly serves the drill and
   the table is built on the first filler rather than on every call;
   `WordOptions.bigrams` still takes the ready table the drill passes. A word end
@@ -165,6 +166,10 @@ does work`. Decisions that shaped it are in
     a lazy bigram table, word ends and the warm-up count`: the slowest keys
     outrank the transition, the table is built on first use, a word end needs
     its neighbour allowed, and the warm-up counts committed words.
+31. coverage, the cases the review named. `test(trainer): coverage, the
+    layoutfluid gate, the filler floor and the warm-up sentence`: three specs,
+    the two one-line fixes their asserts demanded, and the warm-up and review
+    finish notices read back from headless Chromium.
 
 ## Open
 

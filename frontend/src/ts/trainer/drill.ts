@@ -259,6 +259,10 @@ export async function startWarmUp(): Promise<boolean> {
       weights: charWeights(getLayoutStats(statsName()), layout),
     },
   );
+  if (words.length === 0) {
+    showNoticeNotification("This layout has no keys to warm up on.");
+    return false;
+  }
   return startSession({
     words,
     indicator: "warm-up",

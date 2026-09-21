@@ -539,6 +539,14 @@ function pseudoWord(
           options.minLength,
           options.random,
         );
+  // a start letter whose continuations are all outside the lesson dead-ends the
+  // walk after one character, under the floor every real word has to clear
+  if (
+    word !== undefined &&
+    word.length < Math.min(letterCount, options.minLength)
+  ) {
+    word = undefined;
+  }
   word ??= alternatingWord(letters, fresh, letterCount, options.random);
   for (let i = 0; i < symbolCount; i++) {
     word += pickWeighted(symbols, fresh, options.random);
