@@ -13,6 +13,13 @@ import {
   importRequest,
 } from "../../../trainer/actions";
 import {
+  dayOf,
+  getLayoutHistory,
+  KeyDelta,
+  keyDeltas,
+} from "../../../trainer/history";
+import { getLayoutStats, layoutStatsName } from "../../../trainer/key-stats";
+import {
   Attempt,
   bestOf,
   criteriaFor,
@@ -30,6 +37,8 @@ import {
 import { getActiveLesson } from "../../../trainer/session";
 import { FaSolidIcon } from "../../../types/font-awesome";
 import { cn } from "../../../utils/cn";
+import { keycodeToLayoutKey } from "../../../utils/key-converter";
+import { resolveLayoutName } from "../../../utils/layout-name";
 import { Button } from "../../common/Button";
 import { ChartJs } from "../../common/ChartJs";
 import { Fa } from "../../common/Fa";
@@ -104,6 +113,18 @@ function lessonColumns(): DataTableColumnDef<LessonRow>[] {
 function layoutAttempts(): Attempt[] {
   const layout = progressLayout();
   return progress().attempts.filter((attempt) => attempt.layout === layout);
+}
+
+function statsName(): string {
+  return layoutStatsName(
+    resolveLayoutName(getConfig.layout, getConfig.keymapLayout),
+    getConfig.funbox,
+  );
+}
+
+function deltaLine(delta: KeyDelta, legend: string): string {
+  const direction = delta.ms > 0 ? "slower" : "faster";
+  return `${legend} is ${Math.round(Math.abs(delta.ms))} ms ${direction} than last week`;
 }
 
 function AttemptsChart(props: { attempts: Attempt[] }): JSXElement {
@@ -243,6 +264,21 @@ export function TrainerPage(): JSXElement {
   createEffectOn(importRequest, pickFile, { defer: true });
 
   const attempts = createMemo(layoutAttempts);
+  const deltas = createMemo((): KeyDelta[] =>
+    keyDeltas(
+      getLayoutHistory(statsName()),
+      getLayoutStats(statsName()),
+      dayOf(Date.now()),
+    ),
+  );
+  const keyLegend = (delta: KeyDelta): string => {
+    const layout = inputLayoutObject();
+    const label =
+      layout === undefined
+        ? undefined
+        : keycodeToLayoutKey(delta.keycode, layout);
+    return label === " " ? "space" : (label ?? delta.keycode);
+  };
   const shown = createMemo((): { lesson: Lesson; index: number }[] =>
     LESSONS.map((lesson, index) => ({ lesson, index })).filter(({ lesson }) =>
       lessonAvailable(lesson, progressLayout()),
@@ -360,6 +396,16 @@ export function TrainerPage(): JSXElement {
               data={rows()}
               class="text-sm"
             />
+          </div>
+        </Show>
+        <Show when={deltas().length > 0}>
+          <div class="grid gap-2" data-testid="keyChanges">
+            <div class="text-xs text-sub">key changes</div>
+            <ul class="list-disc pl-5 text-sm text-sub">
+              <For each={deltas()}>
+                {(delta) => <li>{deltaLine(delta, keyLegend(delta))}</li>}
+              </For>
+            </ul>
           </div>
         </Show>
       </div>

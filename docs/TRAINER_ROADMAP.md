@@ -20,7 +20,7 @@ Gaps:
 - Early lessons read real words since the adaptive-words slice: `largestCorpus` in session.ts loads english_10k, `buildLessonWords` draws by damped rank when the corpus is ordered by frequency and never mutates a real word. Since step 17 the 120-word pool is weighted by `charWeights` and rebuilt after every finished lesson test through `rebuildLessonWords`.
 - Lesson names follow the layout since layout-aware-curriculum: `lessonName` in lessons.ts joins the fresh legends for the lessons whose name is their qwerty legends and keeps the fixed names, `lessonKeyLegend` resolves the numbers through `layer: "auto"`, and every surface (page, chip, card, indicator, toast, commandline) reads it. "default" resolves through keymapLayout in utils/layout-name.ts, and progress is per layout since Progress v2: `progressLayout()` in lessons.ts names the entry that `currentLesson()`, `unlockedUpTo()` and `bestOf()` read.
 - Config leaks, closed by foundations A: lifecycle.ts sets the store before it fires the finished event, the persisted config hook in session.ts keeps lesson values out of the saved config, and index.ts scores an attempt only when isLessonText accepts the target words.
-- Progress v3 keeps lesson ids for current and unlocked, so a split or an inserted lesson never moves an unlocked position; v1 and v2 migrate through the localStorage hook and on backup import. Progress keeps 1000 attempts with at most 50 per lesson and layout, and stores a best per lesson so trimming never evicts one. Key stats do the same since key stats v2. The backup travels as a file: `exportBackupFile` and `importBackupFile` in trainer/actions.ts, wired to the trainer page header and the two commandline commands.
+- Progress v3 keeps lesson ids for current and unlocked, so a split or an inserted lesson never moves an unlocked position; v1 and v2 migrate through the localStorage hook and on backup import. Progress keeps 1000 attempts with at most 50 per lesson and layout, and stores a best per lesson so trimming never evicts one. Key stats do the same since key stats v2. The backup travels as a file: `exportBackupFile` and `importBackupFile` in trainer/actions.ts, wired to the trainer page header and the two commandline commands; since step 20 it is version 5 and carries key stats, progress, confusions and the key history.
 
 ## Expansion ideas
 
@@ -127,7 +127,9 @@ Attempts already hold everything for slice one; the ChartJs wrapper, time scale,
 
 First slice landed in `feat(trainer): progress-dashboard, attempts chart and lesson table`: a ChartJs line of the current layout's attempts with wpm left, accuracy right and the configured floors as annotation lines, plus a DataTable with attempts, best, last wpm and acc and state per lesson, both hidden while the layout has no attempts.
 
-Risk: deltas mean little until sample-model-v2 removes the penalty.
+Second slice landed in `feat(trainer): progress-dashboard, key history and deltas`: a `trainerKeyHistory` store (version 1, per layout, one snapshot per day of emaMs, errRate and total per key) written from recordSamples, the day's entry overwritten, kept for 90 days, in the backup as version 5 and cleared with the key stats. `keyDeltas` in trainer/history.ts compares today's stats with the newest snapshot at least seven days old and lists keys with at least 20 new samples and 15% movement in emaMs; the trainer page shows them below the table as "k is 120 ms faster than last week" or "slower", hidden without a qualifying snapshot.
+
+Risk, resolved: key stats v2 dropped the penalty before the deltas landed.
 
 ### Curriculum tracks
 
@@ -229,9 +231,9 @@ Later, the French goal and the rest:
 17. adaptive-words: weak-key weighting and mid-lesson rebuilds. Done in `feat(trainer): adaptive-words, weak-key weighting and mid-lesson rebuilds`.
 18. mastery-and-phases: speed and accuracy phases. Done in `feat(trainer): mastery-and-phases, accuracy phase then speed phase`.
 19. keymap-visuals: the heatmap. Done in `feat(trainer): keymap-visuals, the heatmap`; rebuild both images with monkeybuild before the config PATCH accepts `keymapHeat`.
-20. progress-dashboard: key history and deltas.
+20. progress-dashboard: key history and deltas. Done in `feat(trainer): progress-dashboard, key history and deltas`.
 
-Now fixes what every later feature reads and gives the trainer its home. Next puts surfaces on data that is honest. Later needs the new data model and the layout work.
+Now fixes what every later feature reads and gives the trainer its home. Next puts surfaces on data that is honest. Later needs the new data model and the layout work. Steps 14 to 20 landed on one branch; still open from their slices: bigram transitions (16), n-gram fillers (17), the picker modal, warm-up and review.
 
 ## Working agreement
 

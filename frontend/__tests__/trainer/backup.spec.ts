@@ -9,7 +9,17 @@ import {
   recordConfusions,
   resetConfusions,
 } from "../../src/ts/trainer/confusions";
-import { getKeyStats, recordSamples } from "../../src/ts/trainer/key-stats";
+import {
+  dayOf,
+  getLayoutHistory,
+  recordSnapshot,
+  resetKeyHistory,
+} from "../../src/ts/trainer/history";
+import {
+  getKeyStats,
+  recordSamples,
+  resetKeyStats,
+} from "../../src/ts/trainer/key-stats";
 import {
   currentLesson,
   progress,
@@ -40,7 +50,63 @@ describe("backup", () => {
     expect(getKeyStats().layouts["qwerty"]?.["KeyA"]?.total).toBe(1);
     expect(getLayoutConfusions("qwerty")).toEqual({ KeyD: { KeyK: 1 } });
     expect(currentLesson()).toBe(3);
-    expect(JSON.parse(json)).toMatchObject({ version: 4 });
+    expect(JSON.parse(json)).toMatchObject({ version: 5 });
+  });
+
+  it("carries the key history and writes today's snapshot with the samples", () => {
+    resetKeyHistory();
+    resetKeyStats();
+    recordSamples("qwerty", [
+      { keycode: "KeyA", shifted: false, correct: true },
+    ]);
+    const today = dayOf(Date.now());
+    expect(getLayoutHistory("qwerty")[today]?.["KeyA"]).toMatchObject({
+      total: 1,
+    });
+    recordSnapshot("qwerty", { KeyS: { emaMs: 1, errRate: 0, total: 9 } }, 0);
+    const json = exportBackup();
+    resetKeyHistory();
+    expect(importBackup(json)).toBe(true);
+    expect(getLayoutHistory("qwerty")["1970-01-01"]).toEqual({
+      KeyS: { emaMs: 1, errRate: 0, total: 9 },
+    });
+  });
+
+  it("imports every earlier version and reads back as version 5", () => {
+    const progressV3 = { version: 3, layouts: {}, attempts: [] };
+    const versions = [
+      {
+        version: 1,
+        keyStats: { version: 1, layouts: {} },
+        progress: { version: 1, current: 0, unlocked: 0, attempts: [] },
+      },
+      {
+        version: 2,
+        keyStats: { version: 2, layouts: {} },
+        progress: { version: 2, layouts: {}, attempts: [] },
+      },
+      {
+        version: 3,
+        keyStats: { version: 2, layouts: {} },
+        progress: progressV3,
+      },
+      {
+        version: 4,
+        keyStats: { version: 2, layouts: {} },
+        progress: progressV3,
+        confusions: { version: 1, layouts: { qwerty: { KeyD: { KeyK: 4 } } } },
+      },
+    ];
+    for (const backup of versions) {
+      expect(parseBackup(JSON.stringify(backup))).toMatchObject({ version: 5 });
+      expect(importBackup(JSON.stringify(backup))).toBe(true);
+      expect(getLayoutHistory("qwerty")).toEqual({});
+      expect(JSON.parse(exportBackup())).toMatchObject({
+        version: 5,
+        keyHistory: { version: 1 },
+      });
+    }
+    expect(getLayoutConfusions("qwerty")).toEqual({ KeyD: { KeyK: 4 } });
   });
 
   it("starts confusions empty when an older backup lacks them", () => {
@@ -54,7 +120,7 @@ describe("backup", () => {
     });
     expect(importBackup(json)).toBe(true);
     expect(getLayoutConfusions("qwerty")).toEqual({});
-    expect(exportBackup()).toContain('"version":4');
+    expect(exportBackup()).toContain('"version":5');
   });
 
   it("upgrades a version 1 backup on import", () => {
@@ -71,7 +137,7 @@ describe("backup", () => {
         ],
       },
     });
-    expect(parseBackup(json)).toMatchObject({ version: 4 });
+    expect(parseBackup(json)).toMatchObject({ version: 5 });
     expect(importBackup(json)).toBe(true);
     expect(progress()).toEqual({
       version: 3,
@@ -89,7 +155,7 @@ describe("backup", () => {
         },
       ],
     });
-    expect(exportBackup()).toContain('"version":4');
+    expect(exportBackup()).toContain('"version":5');
   });
 
   it("upgrades a version 2 backup on import and keeps the unlocked lesson", () => {

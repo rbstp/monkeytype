@@ -10,6 +10,15 @@ import * as Core from "../../../../src/ts/states/core";
 import * as TestState from "../../../../src/ts/states/test";
 import * as Actions from "../../../../src/ts/trainer/actions";
 import {
+  dayOf,
+  recordSnapshot,
+  resetKeyHistory,
+} from "../../../../src/ts/trainer/history";
+import {
+  recordSamples,
+  resetKeyStats,
+} from "../../../../src/ts/trainer/key-stats";
+import {
   Attempt,
   LESSONS,
   replaceProgress,
@@ -101,8 +110,61 @@ describe("TrainerPage", () => {
     vi.spyOn(Core, "getActivePage").mockReturnValue("trainer");
     setActiveLesson(null);
     resetProgress();
+    resetKeyStats();
+    resetKeyHistory();
     setConfigStore("layout", "default");
     setConfigStore("keymapLayout", "overrideSync");
+  });
+
+  describe("key changes", () => {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const samples = (
+      keycode: "KeyK" | "KeyD",
+      count: number,
+      ms: number,
+    ): void =>
+      recordSamples(
+        "qwerty",
+        Array.from({ length: count }, () => ({
+          keycode,
+          shifted: false,
+          correct: true,
+          spacingMs: ms,
+        })),
+      );
+
+    it("stays hidden without a snapshot old enough", () => {
+      samples("KeyK", 30, 300);
+      render(() => <TrainerPage />);
+      expect(screen.queryByTestId("keyChanges")).toBeNull();
+      recordSnapshot(
+        "qwerty",
+        { KeyK: { emaMs: 600, errRate: 0, total: 5 } },
+        Date.now() - 3 * dayMs,
+      );
+      expect(screen.queryByTestId("keyChanges")).toBeNull();
+    });
+
+    it("lists keys that moved since a snapshot at least a week old", () => {
+      recordSnapshot(
+        "qwerty",
+        {
+          KeyK: { emaMs: 420, errRate: 0, total: 5 },
+          KeyD: { emaMs: 200, errRate: 0, total: 5 },
+        },
+        Date.now() - 8 * dayMs,
+      );
+      samples("KeyK", 30, 300);
+      samples("KeyD", 30, 250);
+      render(() => <TrainerPage />);
+      const list = screen.getByTestId("keyChanges");
+      expect(list).toHaveTextContent("key changes");
+      expect(list).toHaveTextContent("k is 120 ms faster than last week");
+      expect(list).toHaveTextContent("d is 50 ms slower than last week");
+      expect(dayOf(Date.now())).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      setConfigStore("layout", "dvorak");
+      expect(screen.queryByTestId("keyChanges")).toBeNull();
+    });
   });
 
   it("lists every lesson and hides the chart without attempts", () => {

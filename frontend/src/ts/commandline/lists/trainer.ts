@@ -9,6 +9,7 @@ import {
   requestImport,
 } from "../../trainer/actions";
 import { resetConfusions } from "../../trainer/confusions";
+import { resetKeyHistory } from "../../trainer/history";
 import { resetKeyStats } from "../../trainer/key-stats";
 import {
   currentLesson,
@@ -136,6 +137,7 @@ const commands: Command[] = [
     exec: (): void => {
       resetKeyStats();
       resetConfusions();
+      resetKeyHistory();
       showSuccessNotification("Key stats reset");
     },
   },

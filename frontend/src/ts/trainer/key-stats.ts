@@ -6,6 +6,7 @@ import { EventLog } from "../test/events/types";
 import { findLayoutKey } from "../utils/key-converter";
 import { deadKeyFor } from "./dead-keys";
 import { Finger, FINGERS, isShiftedLayer, keycodeToFinger } from "./finger";
+import { recordSnapshot } from "./history";
 
 const KeyStatSchema = z.object({
   emaMs: z.number().nonnegative(),
@@ -319,17 +320,16 @@ export function getLayoutStats(layoutName: string): LayoutStats {
 export function recordSamples(layoutName: string, samples: KeySample[]): void {
   if (samples.length === 0) return;
   const now = Date.now();
+  const updated = applySamples(
+    keyStats().layouts[layoutName] ?? {},
+    samples,
+    now,
+  );
   setKeyStats((current) => ({
     version: 2,
-    layouts: {
-      ...current.layouts,
-      [layoutName]: applySamples(
-        current.layouts[layoutName] ?? {},
-        samples,
-        now,
-      ),
-    },
+    layouts: { ...current.layouts, [layoutName]: updated },
   }));
+  recordSnapshot(layoutName, updated, now);
 }
 
 export function resetKeyStats(): void {
