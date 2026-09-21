@@ -81,9 +81,10 @@ does work`. Decisions that shaped it are in
 - Progress v3 stores lesson ids per layout, so a split or an inserted lesson
   never moves an unlocked position; v1 and v2 migrate through the localStorage
   hook and on backup import. It keeps 1000 attempts, at most 50 per lesson and
-  layout, and a best per lesson that trimming never evicts. Key stats do the
-  same. `exportBackupFile` and `importBackupFile` carry version 6: key stats,
-  progress, confusions, transitions and the key history.
+  layout, and a best per lesson that trimming never evicts; an import is
+  trimmed to those caps as it lands, so no stored list outruns them. Key stats
+  do the same. `exportBackupFile` and `importBackupFile` carry version 6: key
+  stats, progress, confusions, transitions and the key history.
 - An id the list cannot resolve still reads as the first lesson, since a read
   has to land somewhere, but `unlockedAfterSync` no longer writes that reading
   back. It walks the attempts from the first lesson through `unlockStatus` and
@@ -92,10 +93,12 @@ does work`. Decisions that shaped it are in
   resolves is still walked forward only. `syncUnlocked` runs on every
   `fullConfigChangeFinished`, on every unlock change and on a backup import, so
   it collects only the writes that replaced an unreadable id and says once per
-  page load which layout and lesson the pointer landed on. `recordAttempt`
-  reads an unreadable id the same way rather than through `indexOrFirst`, so
-  the guarantee holds in one module instead of resting on the sync running
-  first, and a pointer it rebuilds says so through the same notice.
+  page load which layout and lesson the pointer landed on. An import is its own
+  event: it re-arms that notice, so a blob that needs a repair is never
+  imported in silence. `recordAttempt` reads an unreadable id the same way
+  rather than through `indexOrFirst`, so the guarantee holds in one module
+  instead of resting on the sync running first, and a pointer it rebuilds says
+  so through the same notice.
 - The trainer page shows the lesson map, a continue button, an attempts chart
   against the configured floors and named for the layout `progressLayout`
   resolves, a per-lesson table and the key changes from `keyDeltas`, which
@@ -208,8 +211,18 @@ does work`. Decisions that shaped it are in
     lengths and two layouts, feeding each lesson the share of the window a real
     pool delivers, so the arithmetic step 27 fixed cannot rot.
 
+36. carry-overs, the gaps the notes named. `fix(trainer): carry-overs, trim an
+    imported list and speak up for its repair`: an import trims to the caps and
+    re-arms the repair notice, the reachability table names what it never
+    visited instead of counting, and the config-event sync and the single
+    resolve of a `useLocalStorage` updater get the specs they were missing.
+
 ## Open
 
+- `recordAttempt` trims the list it walks for its baseline as well as the one
+  it walks for the unlock, so both read the same attempts. Only a hand-seeded
+  store can outrun the caps now that an import trims, and no spec makes the two
+  walks disagree; the spec fences the boundary instead.
 - The layout emulator has no dead-key state, so the French track works on the OS
   layout only. `lessonAvailable` hides it everywhere else; not planned to change.
 

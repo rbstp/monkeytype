@@ -1722,6 +1722,21 @@ describe("lessons", () => {
       expect(bestOf("home-row")).toBe(55);
     });
 
+    it("trims an imported attempt list to the caps", () => {
+      replaceProgress({
+        version: 3,
+        layouts: {
+          qwerty: { current: "home-row", unlocked: "home-row", best: {} },
+        },
+        attempts: Array.from({ length: 60 }, (_, ts) => ({
+          ...attempt("home-row", "qwerty", 20, 90),
+          ts,
+        })),
+      });
+      expect(progress().attempts).toHaveLength(50);
+      expect(progress().attempts[0]?.ts).toBe(10);
+    });
+
     it("refuses an attempt for an unknown lesson", () => {
       expect(recordAttempt(attempt("missing", "qwerty", 55))).toBe(false);
       expect(progress().attempts).toHaveLength(0);
@@ -1965,6 +1980,24 @@ describe("lessons", () => {
         );
       });
 
+      it("repairs against a stored list over the caps", async () => {
+        // a hand-seeded store can hold more than the caps: the pointer still
+        // lands where the attempts reach, the repair is no fresh unlock, and
+        // the store comes out trimmed
+        const fresh = await loaded(
+          "gone",
+          Array.from({ length: 60 }, (_, ts) => ({
+            ...attempt("home-row", "qwerty", 40),
+            ts,
+          })),
+        );
+        expect(fresh.recordAttempt(attempt("home-row", "qwerty", 40))).toBe(
+          false,
+        );
+        expect(fresh.progress().layouts["qwerty"]?.unlocked).toBe("e-i");
+        expect(fresh.progress().attempts).toHaveLength(50);
+      });
+
       it("leaves it alone while the attempts prove nothing", async () => {
         const fresh = await loaded("gone", []);
         expect(
@@ -1975,6 +2008,94 @@ describe("lessons", () => {
         ).toBe(false);
         expect(fresh.progress().layouts["qwerty"]?.unlocked).toBe("gone");
         expect(noticeMock).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("syncing on a config event", () => {
+      let noticeMock: MockInstance<typeof Notifications.showNoticeNotification>;
+
+      afterEach(() => {
+        vi.restoreAllMocks();
+        localStorage.removeItem("trainerProgress");
+        vi.resetModules();
+      });
+
+      // nothing syncs on import: the load path is the config event, so the
+      // fresh copy needs the fresh event bus, config store and notifications
+      async function loaded(stored: Progress): Promise<{
+        lessons: typeof import("../../src/ts/trainer/lessons");
+        config: typeof import("../../src/ts/config/store");
+        dispatch: (typeof import("../../src/ts/events/config"))["configEvent"]["dispatch"];
+      }> {
+        localStorage.setItem("trainerProgress", JSON.stringify(stored));
+        vi.resetModules();
+        const notifications = await import("../../src/ts/states/notifications");
+        noticeMock = vi
+          .spyOn(notifications, "showNoticeNotification")
+          .mockReturnValue(0);
+        const { configEvent } = await import("../../src/ts/events/config");
+        const config = await import("../../src/ts/config/store");
+        const lessons = await import("../../src/ts/trainer/lessons");
+        return { lessons, config, dispatch: configEvent.dispatch };
+      }
+
+      it("repairs an unreadable pointer once the config has loaded", async () => {
+        const { lessons, dispatch } = await loaded({
+          version: 3,
+          layouts: {
+            qwerty: { current: "home-row", unlocked: "gone", best: {} },
+          },
+          attempts: [attempt("home-row", "qwerty", 40)],
+        });
+        expect(lessons.progress().layouts["qwerty"]?.unlocked).toBe("gone");
+
+        dispatch({ key: "fullConfigChangeFinished" });
+        expect(lessons.progress().layouts["qwerty"]?.unlocked).toBe("e-i");
+        expect(noticeMock).toHaveBeenCalledWith(
+          "Trainer: an unreadable unlock was rebuilt from your attempts, qwerty through lesson 2.",
+          { durationMs: 8000 },
+        );
+      });
+
+      it("re-evaluates the stored attempts against a changed bar", async () => {
+        const { lessons, config, dispatch } = await loaded({
+          version: 3,
+          layouts: {
+            qwerty: { current: "home-row", unlocked: "home-row", best: {} },
+          },
+          attempts: [attempt("home-row", "qwerty", 27, 96)],
+        });
+
+        dispatch({ key: "fullConfigChangeFinished" });
+        expect(lessons.progress().layouts["qwerty"]?.unlocked).toBe("home-row");
+
+        // the setter writes the legacy object and the store, then dispatches
+        config.Config.trainerUnlock = "relaxed";
+        config.setConfigStore("trainerUnlock", "relaxed");
+        dispatch({
+          key: "trainerUnlock",
+          newValue: "relaxed",
+          previousValue: "normal",
+        });
+        expect(lessons.progress().layouts["qwerty"]?.unlocked).toBe("e-i");
+        // walking a readable pointer forward is ordinary progress
+        expect(noticeMock).not.toHaveBeenCalled();
+      });
+
+      it("ignores a config event for another setting", async () => {
+        const { lessons, dispatch } = await loaded({
+          version: 3,
+          layouts: {
+            qwerty: { current: "home-row", unlocked: "home-row", best: {} },
+          },
+          attempts: [attempt("home-row", "qwerty", 40)],
+        });
+        dispatch({
+          key: "layout",
+          newValue: "dvorak",
+          previousValue: "qwerty",
+        });
+        expect(lessons.progress().layouts["qwerty"]?.unlocked).toBe("home-row");
       });
     });
 
@@ -2071,7 +2192,24 @@ describe("lessons", () => {
         expect(noticeMock).not.toHaveBeenCalled();
       });
 
-      it("announces the same repair once per load", () => {
+      it("announces one repair per load across the paths that repair", () => {
+        // the import repairs qwerty; dvorak has nothing to go on yet
+        replaceProgress({
+          version: 3,
+          layouts: {
+            qwerty: { current: "home-row", unlocked: "gone", best: {} },
+            dvorak: { current: "home-row", unlocked: "vanished", best: {} },
+          },
+          attempts: [attempt("home-row", "qwerty", 40)],
+        });
+        expect(noticeMock).toHaveBeenCalledTimes(1);
+        // the attempt repairs dvorak, and this load already said its piece
+        expect(recordAttempt(attempt("home-row", "dvorak", 40))).toBe(true);
+        expect(progress().layouts["dvorak"]?.unlocked).toBe("e-i");
+        expect(noticeMock).toHaveBeenCalledTimes(1);
+      });
+
+      it("announces again for a later import", () => {
         const data: Progress = {
           version: 3,
           layouts: {
@@ -2082,7 +2220,7 @@ describe("lessons", () => {
         replaceProgress(data);
         replaceProgress(data);
         expect(progress().layouts["qwerty"]?.unlocked).toBe("e-i");
-        expect(noticeMock).toHaveBeenCalledTimes(1);
+        expect(noticeMock).toHaveBeenCalledTimes(2);
       });
     });
 
@@ -2154,7 +2292,7 @@ describe("lessons", () => {
       const unlocks: TrainerUnlock[] = ["relaxed", "normal", "strict"];
       const lengths = [10, 25, 40, 100, 200];
       const unreachable: string[] = [];
-      let checked = 0;
+      const visits = new Map<string, number>();
 
       for (const [layoutName, layout] of layouts) {
         setConfigStore(
@@ -2168,7 +2306,8 @@ describe("lessons", () => {
             setConfigStore("trainerWordsPerTest", wordsPerTest);
             for (const lesson of LESSONS) {
               if (!lessonAvailable(lesson, layoutName)) continue;
-              checked++;
+              const visited = `${layoutName} ${lesson.id}`;
+              visits.set(visited, (visits.get(visited) ?? 0) + 1);
               const attempts = feed(
                 lesson,
                 layout,
@@ -2198,8 +2337,22 @@ describe("lessons", () => {
       }
 
       expect(unreachable).toEqual([]);
-      // 18 lessons on qwerty and 22 on canadian_french, over 3 settings and 5 lengths
-      expect(checked).toBe(15 * (18 + 22));
+      // a lesson skipped here was never checked, so name it: only the character
+      // tracks go unvisited, and only on the layout without a dead-key table
+      const unvisited = layouts.flatMap(([layoutName]) =>
+        LESSONS.filter(
+          (lesson) => !visits.has(`${layoutName} ${lesson.id}`),
+        ).map((lesson) => `${layoutName} ${lesson.id}`),
+      );
+      expect(unvisited).toEqual(
+        LESSONS.filter((lesson) => lesson.chars !== undefined).map(
+          (lesson) => `qwerty ${lesson.id}`,
+        ),
+      );
+      // and every lesson it did visit ran under all of the settings
+      expect([...new Set(visits.values())]).toEqual([
+        unlocks.length * lengths.length,
+      ]);
     });
   });
 });

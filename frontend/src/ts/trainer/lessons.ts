@@ -1305,6 +1305,8 @@ export function recordAttempt(attempt: Attempt): boolean {
         // how far the pointer reaches, as they do in unlockedAfterSync
         const earned = earnedUpTo(attempts, attempt.layout, criteria, 0);
         const lesson = LESSONS[earned];
+        // the baseline walks a trimmed list too, so both walks read the same
+        // attempts when the stored list came in over the caps
         unlockedNow =
           earned >
           earnedUpTo(
@@ -1348,7 +1350,12 @@ export function resetProgress(): void {
   repairAnnounced = false;
 }
 
+/**
+ * Takes an import as its own event: the caps apply to the list it carries, and
+ * a repair it needs is announced even once this page load reported one.
+ */
 export function replaceProgress(data: Progress): void {
-  setProgress(data);
+  repairAnnounced = false;
+  setProgress({ ...data, attempts: trimAttempts(data.attempts) });
   syncUnlocked();
 }
