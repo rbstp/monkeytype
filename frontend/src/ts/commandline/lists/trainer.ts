@@ -11,8 +11,12 @@ import {
 import { resetKeyStats } from "../../trainer/key-stats";
 import {
   currentLesson,
+  lessonAvailable,
   lessonName,
+  lessonNumber,
   LESSONS,
+  nextLesson,
+  progressLayout,
   resetProgress,
   unlockedUpTo,
 } from "../../trainer/lessons";
@@ -32,16 +36,17 @@ function lessonDisplay(index: number): string {
   const lesson = LESSONS[index];
   const name =
     lesson === undefined ? "" : lessonName(lesson, inputLayoutObject());
-  return `${index + 1}. ${name}${locked}`;
+  return `${lessonNumber(index, progressLayout())}. ${name}${locked}`;
 }
 
 const lessonList: CommandsSubgroup = {
   title: "Trainer: choose lesson...",
-  list: LESSONS.map((_lesson, index) => ({
+  list: LESSONS.map((lesson, index) => ({
     id: `trainerLesson${index}`,
     display: lessonDisplay(index),
     icon,
-    available: notDuringTest,
+    available: (): boolean =>
+      notDuringTest() && lessonAvailable(lesson, progressLayout()),
     active: (): boolean => getActiveLesson() === index,
     exec: (): void => void beginLesson(index),
   })),
@@ -65,9 +70,12 @@ const commands: Command[] = [
     id: "trainerNext",
     display: "Trainer: next lesson",
     icon,
-    available: (): boolean =>
-      notDuringTest() && unlockedUpTo() > currentLesson(),
-    exec: (): void => void beginLesson(currentLesson() + 1),
+    available: (): boolean => {
+      const next = nextLesson(currentLesson(), progressLayout());
+      return notDuringTest() && next !== undefined && unlockedUpTo() >= next;
+    },
+    exec: (): void =>
+      void beginLesson(nextLesson(currentLesson(), progressLayout()) ?? 0),
   },
   {
     id: "trainerOpen",

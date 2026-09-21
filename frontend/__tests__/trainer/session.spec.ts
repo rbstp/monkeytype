@@ -7,7 +7,7 @@ import * as Core from "../../src/ts/states/core";
 import * as Lifecycle from "../../src/ts/config/lifecycle";
 import { saveFullConfigToLocalStorage } from "../../src/ts/config/persistence";
 import { setConfig } from "../../src/ts/config/setters";
-import { Config, getConfig } from "../../src/ts/config/store";
+import { Config, getConfig, setConfigStore } from "../../src/ts/config/store";
 import { __testing } from "../../src/ts/config/testing";
 import { getDefaultConfig } from "../../src/ts/constants/default-config";
 import { restartTestEvent } from "../../src/ts/events/test";
@@ -55,12 +55,17 @@ vi.mock("../../src/ts/test/events/stats", () => ({
   getWordBurstHistory: () => [],
 }));
 
-const qwerty = JSON.parse(
-  readFileSync(
-    `${import.meta.dirname}/../../static/layouts/qwerty.json`,
-    "utf-8",
-  ),
-) as LayoutObject;
+function readLayout(name: string): LayoutObject {
+  return JSON.parse(
+    readFileSync(
+      `${import.meta.dirname}/../../static/layouts/${name}.json`,
+      "utf-8",
+    ),
+  ) as LayoutObject;
+}
+
+const qwerty = readLayout("qwerty");
+const canadianFrench = readLayout("canadian_french");
 
 const { replaceConfig } = __testing;
 
@@ -478,6 +483,58 @@ describe("trainer session", () => {
         trainerUnlock: "relaxed",
       });
       expect(unlockedUpTo()).toBe(1);
+    });
+  });
+
+  describe("accents track", () => {
+    const grave = LESSONS.findIndex((lesson) => lesson.id === "accents-grave");
+
+    it("refuses the track on a layout that cannot type it", async () => {
+      expect(await startLesson(grave)).toBe(false);
+      expect(noticeMock).toHaveBeenCalledWith(
+        "This layout has no keys for this lesson.",
+      );
+      expect(Config.mode).toBe("time");
+    });
+
+    it("needs the OS layout, since the emulator has no dead keys", async () => {
+      replaceConfig({ mode: "time", layout: "canadian_french" });
+      getInputLayoutMock.mockResolvedValueOnce(canadianFrench);
+      expect(await startLesson(grave)).toBe(false);
+      expect(noticeMock).toHaveBeenCalledWith(
+        "Accents need the OS layout: set layout to default and pick the keymap layout.",
+      );
+      expect(Config.mode).toBe("time");
+    });
+
+    it("builds words carrying the accents from the corpus", async () => {
+      replaceConfig({
+        mode: "time",
+        layout: "default",
+        keymapLayout: "canadian_french",
+        language: "french",
+      });
+      setConfigStore("keymapLayout", "canadian_french");
+      getInputLayoutMock.mockResolvedValueOnce(canadianFrench);
+      getLanguageMock.mockResolvedValueOnce({
+        name: "french_10k",
+        words: ["très", "après", "père", "là", "déjà", "où", "sale", "les"],
+      } as never);
+      expect(await startLesson(grave)).toBe(true);
+      expect(getLanguageMock).toHaveBeenCalledWith("french_10k");
+      const words = CustomText.getText();
+      expect(words.some((word) => word.includes("è"))).toBe(true);
+      expect(words.some((word) => word.includes("à"))).toBe(true);
+      expect(words.some((word) => word.includes("ù"))).toBe(true);
+      expect(Core.getCustomTextIndicator()?.name).toBe(
+        "lesson 19: è à ù (os layout)",
+      );
+      expect(currentLesson()).toBe(grave);
+      expect(progress().layouts["canadian_french"]?.current).toBe(
+        "accents-grave",
+      );
+      stopLesson();
+      setConfigStore("keymapLayout", "overrideSync");
     });
   });
 

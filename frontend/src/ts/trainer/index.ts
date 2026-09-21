@@ -19,8 +19,11 @@ import {
   countPerKey,
   isLessonText,
   lessonChars,
+  lessonKeycodes,
   lessonName,
+  lessonNumber,
   LESSONS,
+  nextLesson,
   progressLayout,
   recordAttempt,
 } from "./lessons";
@@ -40,7 +43,7 @@ export type FinishedTest = {
 export function onTestFinished(test: FinishedTest): void {
   if (!test.samplesUsable || test.eventLog.context.mode === "zen") return;
 
-  const layoutName = layoutStatsName(
+  const statsName = layoutStatsName(
     resolveLayoutName(Config.layout, Config.keymapLayout),
     Config.funbox,
   );
@@ -59,13 +62,13 @@ export function onTestFinished(test: FinishedTest): void {
     .getInputLayout()
     .then((layout) => {
       const samples = samplesFromEventLog(test.eventLog, layout);
-      if (recordKeys) recordSamples(layoutName, samples);
+      if (recordKeys) recordSamples(statsName, samples);
       const drill = getActiveDrill();
       if (drill !== null && recordKeys) {
         showNoticeNotification(
           drillSummary(
             drill,
-            getLayoutStats(layoutName),
+            getLayoutStats(statsName),
             (keycode) => keycodeToLayoutKey(keycode, layout) ?? keycode,
           ),
           { durationMs: 8000 },
@@ -81,18 +84,20 @@ export function onTestFinished(test: FinishedTest): void {
         return;
       }
 
+      const layoutName = progressLayout();
       const unlocked = recordAttempt({
         lesson: lesson.id,
-        layout: progressLayout(),
+        layout: layoutName,
         wpm: test.completedEvent.wpm,
         acc: test.completedEvent.acc,
-        perKey: countPerKey(samples, lesson),
+        perKey: countPerKey(samples, lesson, lessonKeycodes(lesson, layout)),
         ts: Date.now(),
       });
-      const following = LESSONS[lessonIndex + 1];
-      if (unlocked && following !== undefined) {
+      const next = nextLesson(lessonIndex, layoutName);
+      const following = next === undefined ? undefined : LESSONS[next];
+      if (unlocked && next !== undefined && following !== undefined) {
         showSuccessNotification(
-          `Lesson ${lessonIndex + 2} unlocked: ${lessonName(following, layout)}`,
+          `Lesson ${lessonNumber(next, layoutName)} unlocked: ${lessonName(following, layout)}`,
           { durationMs: 5000 },
         );
       }

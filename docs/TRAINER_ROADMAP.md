@@ -15,7 +15,7 @@ Strengths:
 Gaps:
 
 - The chip at LessonNotice.tsx names the active lesson, its best and the target on the test screen; the result card at LessonResultCard.tsx prints the shortfall or the unlock with retry and next. The unlock toast in trainer/index.ts stays.
-- Key stats v2 keeps speed apart from errors: emaMs takes only correct, non-recovery samples with pauses capped at three times the average, errRate is its own moving average, and deletes advance the clock. Shift is still folded into the base key in key-stats.ts. Panel and tips label keys slow or error-prone.
+- Key stats v2 keeps speed apart from errors: emaMs takes only correct, non-recovery samples with pauses capped at three times the average, errRate is its own moving average, and deletes advance the clock. Shift is still folded into the base key in key-stats.ts; an accented char typed through a dead key counts for the dead key, which carries the spacing, and the base key since the French track. Panel and tips label keys slow or error-prone.
 - Unlocks read the configured floor through criteriaFor and, since the mastery gate, `masteryOf` in lessons.ts pools perKey over the last three attempts: a new key needs its share of a 60-sample budget (20 for a two-key lesson, 4 for capitals left, 6 for capitals right) and at most 3% errors before `unlockStatus` says ok. The result card prints the first shortfall.
 - Early lessons read real words since the adaptive-words slice: `largestCorpus` in session.ts loads english_10k, `buildLessonWords` draws by damped rank when the corpus is ordered by frequency and never mutates a real word. The 120-word pool is still built once per startLesson; weak-key weighting and mid-lesson rebuilds are build-order step 17.
 - Lesson names follow the layout since layout-aware-curriculum: `lessonName` in lessons.ts joins the fresh legends for the lessons whose name is their qwerty legends and keeps the fixed names, `lessonKeyLegend` resolves the numbers through `layer: "auto"`, and every surface (page, chip, card, indicator, toast, commandline) reads it. "default" resolves through keymapLayout in utils/layout-name.ts, and progress is per layout since Progress v2: `progressLayout()` in lessons.ts names the entry that `currentLesson()`, `unlockedUpTo()` and `bestOf()` read.
@@ -133,6 +133,8 @@ Splitting the capitals lesson shifts indices, so this needs id-based progress fr
 
 First slice landed in `feat(trainer): curriculum-tracks, id-based progress and the capitals split`: Progress v3 stores `current` and `unlocked` as lesson ids per layout, `upgradeProgress` chains v1 to v2 to v3 over the frozen `LESSON_IDS_V2`, `currentLesson()` and `unlockedUpTo()` still return indices and send an unknown id to 0, and backup v3 accepts 1, 2 and 3. "capitals" became "capitals-left" and "capitals-right" from keycodeToFinger, "punctuation" became the ladder "quote-minus", "equal-brackets" and "shifted-punctuation"; the old ids migrate to "capitals-left" and "quote-minus" for attempts, bests and positions. No space drill, since the drill exists.
 
+Second slice landed in `feat(trainer): curriculum-tracks, the French accents track`: trainer/dead-keys.ts maps an accented char to `{ dead, deadLayer, legend, base }` per layout, seeded with canadian_french and matched to a layout object by where its dead legends sit. Lessons with `chars` ("accents-direct" é ç, "accents-grave" è à ù, "accents-circumflex" ê â î ô û, "accents-diaeresis" ë ï ü) resolve each char through findLayoutKey, then the table, and drop what the layout cannot type; `lessonAvailable`, `lessonNumber` and `nextLesson` hide the track and renumber the map on layouts without a table, and unlocks skip it. `samplesFromEventLog` yields a dead-key sample then a base-key sample for an accented char (the pair arrives as one input, so only the dead key carries the spacing), `lessonKeycodes` makes mastery count the dead key and `masteryOf` shares the sample budget over the keys the track resolves to, and the track is offered only while `Config.layout` is "default", since the emulator has no dead-key state; a stored current lesson the layout no longer offers falls back to the nearest one it does. Words come from the largest corpus of `Config.language`; a rare accent mixes pseudo words in once fewer than three real words carry it.
+
 Risk: the layout emulator has no dead-key state, so the French track only works on the OS layout.
 
 ### Foundations
@@ -188,7 +190,7 @@ Dropped by decision 2. Kept here for the record: stage one was a managed trainer
 5. states/test.ts:185 and key-stats.ts:38 map "default" to qwerty. Resolved through keymapLayout in utils/layout-name.ts; per-layout progress remains for commit C.
 6. key-stats.ts:27,84-86 folds a 5000 ms penalty into a value shown as ms. Done in key stats v2.
 7. key-stats.ts:51-59 skips deletes without advancing the clock; no pause cap. Done in key stats v2.
-8. key-stats.ts:95-111 ignores sample.shifted.
+8. `applySamples` and `updateStat` in key-stats.ts key by keycode only, so shifted keys still share the base key's stat. Dead keys are attributed since the French track: `samplesFromEventLog` emits the dead key, which carries the spacing, then the base key for an accented char.
 9. canUnlock in lessons.ts ignored perKey. Done in the mastery gate: canUnlock goes through unlockStatus and lessons.spec.ts covers the pooling and the shortfalls.
 10. lessons.ts capped attempts at 100 across all lessons. Done in foundations C: `trimAttempts` keeps 1000 overall and 50 per lesson and layout.
 11. The progress store in lessons.ts passed no migrate; backup.ts was v1-literal for progress. Done in foundations C: `upgradeProgress` runs from the localStorage hook and from the backup union.
@@ -218,7 +220,7 @@ Next, honest data and surfaces on it:
 Later, the French goal and the rest:
 
 14. layout-aware-curriculum: legend-derived names, auto layer, per-layout progress. Done in `feat(trainer): layout-aware-curriculum, legend-derived names and an auto layer`; per-layout progress had landed with step 7.
-15. curriculum-tracks: capitals by hand and the punctuation ladder, then the French accents track with a dead-key table. 15a done in `feat(trainer): curriculum-tracks, id-based progress and the capitals split`.
+15. curriculum-tracks: capitals by hand and the punctuation ladder, then the French accents track with a dead-key table. Done in two commits: `feat(trainer): curriculum-tracks, id-based progress and the capitals split` and `feat(trainer): curriculum-tracks, the French accents track`; covers foundation item 8 above for dead keys.
 16. pairwise-stats: confusion pairs, then bigram transitions.
 17. adaptive-words: weak-key weighting and mid-lesson rebuilds.
 18. mastery-and-phases: speed and accuracy phases.

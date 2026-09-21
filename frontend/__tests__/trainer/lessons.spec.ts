@@ -12,12 +12,16 @@ import {
   currentLesson,
   defaultCriteria,
   lessonChars,
+  lessonAvailable,
   lessonIndex,
   LESSON_IDS_V2,
+  lessonKeycodes,
   lessonKeyLegend,
   lessonName,
+  lessonNumber,
   LESSONS,
   masteryOf,
+  nextLesson,
   masterySamplesFor,
   progress,
   Progress,
@@ -57,6 +61,7 @@ const qwerty = readLayout("qwerty");
 const dvorak = readLayout("dvorak");
 const azerty = readLayout("azerty");
 const colemak = readLayout("colemak");
+const canadianFrench = readLayout("canadian_french");
 
 function seeded(seed: number): () => number {
   let state = seed;
@@ -96,6 +101,10 @@ describe("lessons", () => {
         "quote-minus",
         "equal-brackets",
         "shifted-punctuation",
+        "accents-direct",
+        "accents-grave",
+        "accents-circumflex",
+        "accents-diaeresis",
         "numbers",
       ]);
       for (const id of ids) expect(/^[a-z]+(-[a-z]+)*$/.test(id)).toBe(true);
@@ -196,6 +205,70 @@ describe("lessons", () => {
       expect(chars.allowed).toContain("a");
     });
 
+    it("resolves the accents track through direct legends and dead keys", () => {
+      const direct = lessonIndex("accents-direct");
+      const grave = lessonIndex("accents-grave");
+      expect(lessonChars(direct, canadianFrench).fresh).toEqual(["é", "ç"]);
+      expect(lessonChars(grave, canadianFrench).fresh).toEqual(["è", "à", "ù"]);
+      expect(lessonChars(grave, canadianFrench).allowed).toContain("é");
+      expect(
+        lessonChars(lessonIndex("accents-diaeresis"), canadianFrench).fresh,
+      ).toEqual(["ë", "ï", "ü"]);
+      expect(lessonChars(grave, qwerty).fresh).toEqual([]);
+      expect(lessonChars(lessonIndex("numbers"), qwerty).allowed).not.toContain(
+        "è",
+      );
+      expect(lessonChars(direct, azerty).fresh).toEqual(["é", "ç"]);
+      expect(lessonChars(grave, azerty).fresh).toEqual(["è", "à", "ù"]);
+      expect(
+        lessonChars(lessonIndex("accents-circumflex"), azerty).fresh,
+      ).toEqual([]);
+    });
+
+    it("offers dead keys on the OS layout only", () => {
+      const grave = lessonIndex("accents-grave");
+      setConfigStore("layout", "canadian_french");
+      expect(lessonChars(grave, canadianFrench).fresh).toEqual([]);
+      expect(
+        lessonChars(lessonIndex("accents-direct"), canadianFrench).fresh,
+      ).toEqual(["é", "ç"]);
+      expect(
+        lessonChars(lessonIndex("numbers"), canadianFrench).allowed,
+      ).not.toContain("è");
+      expect(
+        lessonKeycodes(LESSONS[grave] as (typeof LESSONS)[0], canadianFrench),
+      ).toEqual([]);
+      expect(
+        lessonAvailable(
+          LESSONS[grave] as (typeof LESSONS)[0],
+          "canadian_french",
+        ),
+      ).toBe(false);
+      setConfigStore("layout", "default");
+      expect(lessonChars(grave, canadianFrench).fresh).toEqual(["è", "à", "ù"]);
+      expect(
+        lessonAvailable(
+          LESSONS[grave] as (typeof LESSONS)[0],
+          "canadian_french",
+        ),
+      ).toBe(true);
+    });
+
+    it("counts mastery on the key each character sits on, or its dead key", () => {
+      const grave = LESSONS[
+        lessonIndex("accents-grave")
+      ] as (typeof LESSONS)[0];
+      const direct = LESSONS[
+        lessonIndex("accents-direct")
+      ] as (typeof LESSONS)[0];
+      expect(lessonKeycodes(grave, canadianFrench)).toEqual(["Quote"]);
+      expect(lessonKeycodes(direct, canadianFrench)).toEqual(["Slash", "KeyC"]);
+      expect(lessonKeycodes(grave, qwerty)).toEqual([]);
+      expect(lessonKeycodes(LESSONS[1] as (typeof LESSONS)[0], qwerty)).toEqual(
+        ["KeyE", "KeyI"],
+      );
+    });
+
     it("resolves digits through the auto layer on any layout", () => {
       const numbers = lessonIndex("numbers");
       const digits = [..."1234567890"];
@@ -203,6 +276,38 @@ describe("lessons", () => {
       expect(lessonChars(numbers, azerty).fresh).toEqual(digits);
       expect(lessonChars(numbers, colemak).fresh).toEqual(digits);
       expect(lessonChars(numbers, azerty).allowed).not.toContain("&");
+    });
+  });
+
+  describe("availability", () => {
+    const grave = lessonIndex("accents-grave");
+    const numbers = lessonIndex("numbers");
+    const shifted = lessonIndex("shifted-punctuation");
+
+    it("hides the accents track on layouts without a dead-key table", () => {
+      const graveLesson = LESSONS[grave] as (typeof LESSONS)[0];
+      expect(lessonAvailable(graveLesson, "canadian_french")).toBe(true);
+      expect(lessonAvailable(graveLesson, "qwerty")).toBe(false);
+      expect(lessonAvailable(LESSONS[0] as (typeof LESSONS)[0], "qwerty")).toBe(
+        true,
+      );
+    });
+
+    it("numbers the lessons the layout can type", () => {
+      expect(LESSONS).toHaveLength(22);
+      expect(lessonNumber(0, "qwerty")).toBe(1);
+      expect(lessonNumber(shifted, "qwerty")).toBe(17);
+      expect(lessonNumber(numbers, "qwerty")).toBe(18);
+      expect(lessonNumber(numbers, "canadian_french")).toBe(22);
+      expect(lessonNumber(grave, "canadian_french")).toBe(19);
+    });
+
+    it("steps to the next lesson the layout can type", () => {
+      expect(nextLesson(0, "qwerty")).toBe(1);
+      expect(nextLesson(shifted, "qwerty")).toBe(numbers);
+      expect(nextLesson(shifted, "canadian_french")).toBe(shifted + 1);
+      expect(nextLesson(numbers, "qwerty")).toBeUndefined();
+      expect(nextLesson(numbers, "canadian_french")).toBeUndefined();
     });
   });
 
@@ -230,6 +335,13 @@ describe("lessons", () => {
         expect(named(id, qwerty)).toBe(name);
         expect(named(id, dvorak)).toBe(name);
       }
+    });
+
+    it("names the accents by the characters the layout can type", () => {
+      expect(named("accents-grave", canadianFrench)).toBe("è à ù");
+      expect(named("accents-grave", qwerty)).toBe("è à ù");
+      expect(named("accents-circumflex", azerty)).toBe("ê â î ô û");
+      expect(named("accents-grave")).toBe("è à ù");
     });
 
     it("derives the ladder names from the legends", () => {
@@ -446,6 +558,58 @@ describe("lessons", () => {
       }
     });
 
+    it("draws accented words from the corpus and falls back to pseudo words", () => {
+      const chars = lessonChars(lessonIndex("accents-grave"), canadianFrench);
+      const real = [
+        "très",
+        "après",
+        "père",
+        "mère",
+        "élève",
+        "là",
+        "déjà",
+        "où",
+      ];
+      const words = buildLessonWords(real, chars, {
+        ...options,
+        minReal: 4,
+        random: seeded(31),
+      });
+      for (const accent of chars.fresh) {
+        expect(
+          words.filter((word) => word.includes(accent)).length,
+        ).toBeGreaterThanOrEqual(10);
+      }
+      expect(
+        words.filter((word) => real.includes(word)).length,
+      ).toBeGreaterThan(0);
+      for (const word of words) {
+        for (const char of word) expect(chars.allowed).toContain(char);
+      }
+
+      const pseudo = buildLessonWords(["as", "sad"], chars, {
+        ...options,
+        random: seeded(32),
+      });
+      for (const accent of chars.fresh) {
+        expect(
+          pseudo.filter((word) => word.includes(accent)).length,
+        ).toBeGreaterThanOrEqual(10);
+      }
+      for (const word of pseudo) expect(word).toBe(word.toLowerCase());
+
+      const rare = buildLessonWords(["où", ...real.slice(0, 5)], chars, {
+        ...options,
+        minReal: 4,
+        random: seeded(33),
+      });
+      const withU = rare.filter((word) => word.includes("ù"));
+      expect(withU.length).toBeGreaterThanOrEqual(10);
+      expect(withU.filter((word) => word !== "où").length).toBeGreaterThan(
+        withU.length / 3,
+      );
+    });
+
     it("attaches fresh symbols to words", () => {
       const chars = lessonChars(punctuation, qwerty);
       const words = buildLessonWords([], chars, options);
@@ -488,6 +652,32 @@ describe("lessons", () => {
           },
         ),
       ).toEqual({ Digit1: { total: 2, errors: 1 } });
+    });
+
+    it("lists every key of a track, touched or not, and counts the given keys", () => {
+      const grave = LESSONS[
+        lessonIndex("accents-grave")
+      ] as (typeof LESSONS)[0];
+      expect(
+        countPerKey(
+          [
+            { keycode: "Quote", shifted: false, correct: true },
+            { keycode: "KeyE", shifted: false, correct: true },
+            { keycode: "Quote", shifted: false, correct: false },
+          ],
+          grave,
+          ["Quote", "BracketLeft"],
+        ),
+      ).toEqual({
+        Quote: { total: 2, errors: 1 },
+        BracketLeft: { total: 0, errors: 0 },
+      });
+      expect(
+        countPerKey(
+          [{ keycode: "Quote", shifted: false, correct: true }],
+          grave,
+        ),
+      ).toEqual({});
     });
 
     it("counts only shifted samples for a shifted lesson", () => {
@@ -654,11 +844,60 @@ describe("lessons", () => {
       expect(required("numbers")).toBe(6);
       expect(required("capitals-left")).toBe(4);
       expect(required("capitals-right")).toBe(6);
+      const grave = LESSONS[
+        lessonIndex("accents-grave")
+      ] as (typeof LESSONS)[0];
+      expect(masterySamplesFor(grave)).toBe(20);
+      expect(masterySamplesFor(grave, 1)).toBe(20);
+      expect(masterySamplesFor(grave, 2)).toBe(20);
+      expect(masterySamplesFor(grave, 5)).toBe(12);
       expect(masteryOf([], "capitals-left", "qwerty")["KeyQ"]).toEqual({
         samples: 0,
         errors: 0,
         required: 4,
       });
+    });
+
+    it("reads the keys of a track from its attempts", () => {
+      expect(masteryOf([], "accents-grave", "canadian_french")).toEqual({});
+      const graveAttempt = (perKey: Attempt["perKey"], wpm = 30): Attempt => ({
+        ...attempt(perKey),
+        lesson: "accents-grave",
+        layout: "canadian_french",
+        wpm,
+      });
+      expect(
+        masteryOf(
+          [
+            graveAttempt({ Quote: { total: 5, errors: 1 } }),
+            graveAttempt({ Quote: { total: 6, errors: 0 } }),
+          ],
+          "accents-grave",
+          "canadian_french",
+        ),
+      ).toEqual({ Quote: { samples: 11, errors: 1, required: 20 } });
+      expect(
+        masteryOf(
+          [
+            graveAttempt({
+              Quote: { total: 5, errors: 0 },
+              BracketLeft: { total: 1, errors: 0 },
+              BracketRight: { total: 0, errors: 0 },
+              Slash: { total: 0, errors: 0 },
+              KeyC: { total: 0, errors: 0 },
+            }),
+          ],
+          "accents-grave",
+          "canadian_french",
+        )["Quote"],
+      ).toEqual({ samples: 5, errors: 0, required: 12 });
+      expect(
+        unlockStatus(
+          [graveAttempt({ Quote: { total: 20, errors: 0 } }, 40)],
+          "accents-grave",
+          "canadian_french",
+        ).ok,
+      ).toBe(true);
     });
 
     it("pools only the last three attempts of that lesson and layout", () => {
@@ -1125,6 +1364,35 @@ describe("lessons", () => {
       expect(progress().layouts["qwerty"]?.current).toBe("r-u");
       setCurrentLesson(99);
       expect(progress().layouts["qwerty"]?.current).toBe("r-u");
+    });
+
+    it("falls back to the nearest lesson the layout offers", () => {
+      replaceProgress({
+        version: 3,
+        layouts: {
+          qwerty: {
+            current: "accents-grave",
+            unlocked: "accents-diaeresis",
+            best: {},
+          },
+        },
+        attempts: [],
+      });
+      expect(currentLesson()).toBe(lessonIndex("shifted-punctuation"));
+      setConfigStore("keymapLayout", "canadian_french");
+      replaceProgress({
+        version: 3,
+        layouts: {
+          canadian_french: {
+            current: "accents-grave",
+            unlocked: "accents-grave",
+            best: {},
+          },
+        },
+        attempts: [],
+      });
+      expect(currentLesson()).toBe(lessonIndex("accents-grave"));
+      setConfigStore("keymapLayout", "overrideSync");
     });
 
     it("stores the unlocked lesson as an id", () => {

@@ -36,7 +36,9 @@ import {
   Lesson,
   lessonChars,
   lessonName,
+  lessonNumber,
   LESSONS,
+  progressLayout,
   setCurrentLesson,
 } from "./lessons";
 
@@ -229,7 +231,11 @@ function lessonIndicator(
   lesson: Lesson,
   layout?: LayoutObject,
 ): string {
-  return `lesson ${index + 1}: ${lessonName(lesson, layout)}`;
+  const number = lessonNumber(index, progressLayout());
+  const name = lessonName(lesson, layout);
+  return lesson.chars === undefined
+    ? `lesson ${number}: ${name}`
+    : `lesson ${number}: ${name} (os layout)`;
 }
 
 export async function startLesson(index: number): Promise<boolean> {
@@ -239,12 +245,24 @@ export async function startLesson(index: number): Promise<boolean> {
     showNoticeNotification("Finish the current test first.");
     return false;
   }
+  // the layout emulator has no dead-key state
+  if (lesson.chars !== undefined && Config.layout !== "default") {
+    showNoticeNotification(
+      "Accents need the OS layout: set layout to default and pick the keymap layout.",
+    );
+    return false;
+  }
 
   const [layout, language] = await Promise.all([
     __nonReactive.getInputLayout(),
     loadCorpus(Config.language),
   ]);
-  const words = buildLessonWords(language.words, lessonChars(index, layout), {
+  const chars = lessonChars(index, layout);
+  if (chars.fresh.length === 0) {
+    showNoticeNotification("This layout has no keys for this lesson.");
+    return false;
+  }
+  const words = buildLessonWords(language.words, chars, {
     orderedByFrequency: language.orderedByFrequency === true,
   });
   const started = await startSession({

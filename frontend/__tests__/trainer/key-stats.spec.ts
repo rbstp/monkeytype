@@ -14,12 +14,17 @@ import {
   worstKeys,
 } from "../../src/ts/trainer/key-stats";
 
-const qwerty = JSON.parse(
-  readFileSync(
-    `${import.meta.dirname}/../../static/layouts/qwerty.json`,
-    "utf-8",
-  ),
-) as LayoutObject;
+function readLayout(name: string): LayoutObject {
+  return JSON.parse(
+    readFileSync(
+      `${import.meta.dirname}/../../static/layouts/${name}.json`,
+      "utf-8",
+    ),
+  ) as LayoutObject;
+}
+
+const qwerty = readLayout("qwerty");
+const canadianFrench = readLayout("canadian_french");
 
 function input(
   testMs: number,
@@ -113,6 +118,63 @@ describe("key-stats", () => {
       expect(samples).toEqual<KeySample[]>([
         { keycode: "KeyA", shifted: true, correct: true },
       ]);
+    });
+
+    it("times the dead key of a pair and leaves the base key untimed", () => {
+      const samples = samplesFromEventLog(
+        {
+          ...log([input(0, 0, 0, "a", true), input(400, 0, 1, "è", true)]),
+          context: { ...log([]).context, targetWords: ["aè "] },
+        },
+        canadianFrench,
+      );
+      expect(samples[1]).toMatchObject({ keycode: "Quote", spacingMs: 400 });
+      expect(samples[2]).toEqual({
+        keycode: "KeyE",
+        shifted: false,
+        correct: true,
+      });
+    });
+
+    it("splits an accented character into its dead key and its base key", () => {
+      const samples = samplesFromEventLog(
+        {
+          ...log([
+            input(0, 0, 0, "è", true),
+            input(300, 0, 1, "s", true),
+            input(500, 0, 2, "ü", false),
+            input(700, 0, 3, "é", true),
+          ]),
+          context: { ...log([]).context, targetWords: ["èsüé "] },
+        },
+        canadianFrench,
+      );
+
+      expect(samples).toEqual<KeySample[]>([
+        { keycode: "Quote", shifted: false, correct: true },
+        { keycode: "KeyE", shifted: false, correct: true },
+        { keycode: "KeyS", shifted: false, correct: true, spacingMs: 300 },
+        {
+          keycode: "BracketRight",
+          shifted: true,
+          correct: false,
+          spacingMs: 200,
+        },
+        { keycode: "KeyU", shifted: false, correct: false },
+        { keycode: "Slash", shifted: false, correct: true, spacingMs: 200 },
+      ]);
+    });
+
+    it("drops an accented character the layout cannot type", () => {
+      expect(
+        samplesFromEventLog(
+          {
+            ...log([input(0, 0, 0, "è", true)]),
+            context: { ...log([]).context, targetWords: ["è "] },
+          },
+          qwerty,
+        ),
+      ).toEqual([]);
     });
 
     it("ignores events without a target", () => {

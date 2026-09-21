@@ -155,7 +155,9 @@ describe("TrainerPage", () => {
     ]);
     setConfigStore("trainerUnlock", "normal");
     const rows = screen.getAllByRole("row").slice(1);
-    expect(rows).toHaveLength(LESSONS.length);
+    expect(rows).toHaveLength(
+      LESSONS.filter((lesson) => lesson.chars === undefined).length,
+    );
     expect(rows[0]).toHaveTextContent("1. a s d f j k l ;");
     expect(rows[0]).toHaveTextContent("2");
     expect(rows[0]).toHaveTextContent("44");
@@ -187,6 +189,46 @@ describe("TrainerPage", () => {
     expect(rows[12]).toHaveTextContent("13. capitals left");
   });
 
+  it("hides the accents track on a layout without dead keys and numbers the rest", () => {
+    render(() => <TrainerPage />);
+    const map = screen
+      .getAllByRole("button")
+      .filter((button) => button.hasAttribute("data-lesson-state"));
+    expect(map).toHaveLength(18);
+    expect(screen.queryByText("è à ù")).toBeNull();
+    expect(map[17]).toHaveTextContent("18");
+    expect(map[17]).toHaveTextContent("numbers");
+  });
+
+  it("shows the accents track on canadian_french", () => {
+    vi.spyOn(TestState, "inputLayoutObject").mockReturnValue(
+      readLayout("canadian_french"),
+    );
+    setConfigStore("keymapLayout", "canadian_french");
+    render(() => <TrainerPage />);
+    const map = screen
+      .getAllByRole("button")
+      .filter((button) => button.hasAttribute("data-lesson-state"));
+    expect(map).toHaveLength(LESSONS.length);
+    expect(map[18]).toHaveTextContent("19");
+    expect(map[18]).toHaveTextContent("è à ù");
+    expect(map[21]).toHaveTextContent("22");
+    expect(map[21]).toHaveTextContent("numbers");
+  });
+
+  it("hides the accents track on an emulated canadian_french layout", () => {
+    vi.spyOn(TestState, "inputLayoutObject").mockReturnValue(
+      readLayout("canadian_french"),
+    );
+    setConfigStore("layout", "canadian_french");
+    render(() => <TrainerPage />);
+    const map = screen
+      .getAllByRole("button")
+      .filter((button) => button.hasAttribute("data-lesson-state"));
+    expect(map).toHaveLength(18);
+    expect(screen.queryByText("è à ù")).toBeNull();
+  });
+
   it("exports through the shared action", () => {
     render(() => <TrainerPage />);
     fireEvent.click(screen.getByText("export"));
@@ -196,7 +238,7 @@ describe("TrainerPage", () => {
   it("hands a chosen file to the import action and clears the input", async () => {
     vi.mocked(Actions.importBackupFile).mockResolvedValue(true);
     render(() => <TrainerPage />);
-    const input = screen.getByTestId("trainerImportFile") as HTMLInputElement;
+    const input = screen.getByTestId<HTMLInputElement>("trainerImportFile");
     expect(input).toHaveAttribute("accept", ".json,application/json");
     const file = new File(["{}"], "trainer-backup.json", {
       type: "application/json",
@@ -213,7 +255,7 @@ describe("TrainerPage", () => {
 
   it("opens the file picker when an import is requested", () => {
     render(() => <TrainerPage />);
-    const input = screen.getByTestId("trainerImportFile") as HTMLInputElement;
+    const input = screen.getByTestId<HTMLInputElement>("trainerImportFile");
     const click = vi.spyOn(input, "click").mockImplementation(() => undefined);
     expect(click).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText("import"));

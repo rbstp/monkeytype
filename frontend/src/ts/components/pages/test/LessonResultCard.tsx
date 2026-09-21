@@ -9,8 +9,10 @@ import {
   Lesson,
   lessonKeyLegend,
   lessonName,
+  lessonNumber,
   LESSONS,
   masteryErrorRate,
+  nextLesson,
   progress,
   progressLayout,
   unlockedUpTo,
@@ -41,6 +43,15 @@ export function LessonResultCard(): JSXElement {
     return label ?? key.keycode;
   };
 
+  const next = (): number | undefined => {
+    const current = active();
+    return current === undefined
+      ? undefined
+      : nextLesson(current.index, progressLayout());
+  };
+  const hasNext = (): boolean => next() !== undefined;
+  const locked = (): boolean => unlockedUpTo() < (next() ?? Infinity);
+
   const line = createMemo((): string => {
     const current = active();
     const result = getLastResult();
@@ -59,10 +70,11 @@ export function LessonResultCard(): JSXElement {
     }
     const status = unlockStatus(attempts, current.lesson.id, layout, criteria);
     if (status.ok) {
-      const following = LESSONS[current.index + 1];
-      return following === undefined
+      const index = next();
+      const following = index === undefined ? undefined : LESSONS[index];
+      return index === undefined || following === undefined
         ? "lesson passed"
-        : `lesson ${current.index + 2} unlocked: ${lessonName(following, inputLayoutObject())}`;
+        : `lesson ${lessonNumber(index, layout)} unlocked: ${lessonName(following, inputLayoutObject())}`;
     }
     if (status.wpmShort > 0) {
       return `${Math.round(latest.wpm)} wpm, ${status.wpmShort} short of ${criteria.minWpm}`;
@@ -77,10 +89,6 @@ export function LessonResultCard(): JSXElement {
     }
     return `passed the bar, ${legend(weak)} has ${weak.errors} errors in ${weak.samples} samples, above ${masteryErrorRate * 100}%`;
   });
-
-  const next = (): number => (active()?.index ?? -1) + 1;
-  const hasNext = (): boolean => next() < LESSONS.length;
-  const locked = (): boolean => unlockedUpTo() < next();
 
   return (
     <Show when={line() !== ""}>
@@ -102,7 +110,7 @@ export function LessonResultCard(): JSXElement {
               text="next"
               class="px-4 py-2"
               disabled={locked()}
-              onClick={() => void beginLesson(next())}
+              onClick={() => void beginLesson(next() ?? 0)}
             />
           </Show>
         </span>

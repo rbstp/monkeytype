@@ -4,6 +4,7 @@ import { Keycode } from "../constants/keys";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { EventLog } from "../test/events/types";
 import { findLayoutKey } from "../utils/key-converter";
+import { deadKeyFor } from "./dead-keys";
 import { Finger, FINGERS, isShiftedLayer, keycodeToFinger } from "./finger";
 
 const KeyStatSchema = z.object({
@@ -75,6 +76,8 @@ export function layoutStatsName(layout: LayoutName, funbox: string[]): string {
  * Stopped inputs count as errors. Extra characters past the end of a word are
  * ignored. Deletes advance the clock and mark the next insert as a recovery,
  * so the time spent fixing a typo is not charged to the key typed after it.
+ * A dead-key pair arrives as one input, so only the dead key carries the
+ * spacing.
  */
 export function samplesFromEventLog(
   eventLog: EventLog,
@@ -106,16 +109,37 @@ export function samplesFromEventLog(
     if (expected === undefined) continue;
     if (expected === " " && event.data.commitsWord !== true) continue;
 
-    const found = findLayoutKey(expected, layout);
-    if (found === undefined) continue;
-
-    samples.push({
-      keycode: found.keycode,
-      shifted: isShiftedLayer(found.layer),
-      correct: event.data.correct,
+    const timing: Pick<KeySample, "spacingMs" | "recovery"> = {
       ...(spacingMs !== undefined ? { spacingMs } : {}),
       ...(recovery ? { recovery: true } : {}),
-    });
+    };
+    const found = findLayoutKey(expected, layout);
+    if (found !== undefined) {
+      samples.push({
+        keycode: found.keycode,
+        shifted: isShiftedLayer(found.layer),
+        correct: event.data.correct,
+        ...timing,
+      });
+      continue;
+    }
+    const dead = deadKeyFor(expected, layout);
+    if (dead === undefined) continue;
+    const { spacingMs: _pair, ...untimed } = timing;
+    samples.push(
+      {
+        keycode: dead.dead,
+        shifted: isShiftedLayer(dead.deadLayer),
+        correct: event.data.correct,
+        ...timing,
+      },
+      {
+        keycode: dead.base,
+        shifted: false,
+        correct: event.data.correct,
+        ...untimed,
+      },
+    );
   }
 
   return samples;

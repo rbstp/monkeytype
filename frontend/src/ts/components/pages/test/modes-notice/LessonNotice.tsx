@@ -7,7 +7,9 @@ import {
   bestOf,
   criteriaFor,
   lessonName,
+  lessonNumber,
   LESSONS,
+  progressLayout,
 } from "../../../../trainer/lessons";
 import { getActiveLesson } from "../../../../trainer/session";
 import { Notice } from "./Notice";
@@ -19,7 +21,7 @@ export function LessonNotice() {
     const lesson = LESSONS[index];
     if (lesson === undefined) return "";
     const parts = [
-      `lesson ${index + 1}: ${lessonName(lesson, inputLayoutObject())}`,
+      `lesson ${lessonNumber(index, progressLayout())}: ${lessonName(lesson, inputLayoutObject())}`,
     ];
     const best = bestOf(lesson.id);
     if (best !== undefined) parts.push(`best ${Math.round(best)}`);

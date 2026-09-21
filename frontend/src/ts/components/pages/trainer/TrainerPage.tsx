@@ -18,8 +18,10 @@ import {
   criteriaFor,
   currentLesson,
   Lesson,
+  lessonAvailable,
   lessonChars,
   lessonName,
+  lessonNumber,
   LESSONS,
   progress,
   progressLayout,
@@ -53,6 +55,7 @@ function stateIcon(state: LessonState, index: number): FaSolidIcon {
 
 type LessonRow = {
   index: number;
+  number: number;
   name: string;
   attempts: number;
   best: number | undefined;
@@ -69,8 +72,7 @@ function lessonColumns(): DataTableColumnDef<LessonRow>[] {
   return [
     defineColumn("index", {
       header: "lesson",
-      cell: (info) =>
-        `${info.row.original.index + 1}. ${info.row.original.name}`,
+      cell: (info) => `${info.row.original.number}. ${info.row.original.name}`,
     }),
     defineColumn("attempts", {
       header: "attempts",
@@ -241,12 +243,18 @@ export function TrainerPage(): JSXElement {
   createEffectOn(importRequest, pickFile, { defer: true });
 
   const attempts = createMemo(layoutAttempts);
+  const shown = createMemo((): { lesson: Lesson; index: number }[] =>
+    LESSONS.map((lesson, index) => ({ lesson, index })).filter(({ lesson }) =>
+      lessonAvailable(lesson, progressLayout()),
+    ),
+  );
   const rows = createMemo((): LessonRow[] =>
-    LESSONS.map((lesson, index) => {
+    shown().map(({ lesson, index }) => {
       const own = attempts().filter((attempt) => attempt.lesson === lesson.id);
       const last = own[own.length - 1];
       return {
         index,
+        number: lessonNumber(index, progressLayout()),
         name: nameOf(lesson),
         attempts: own.length,
         best: bestOf(lesson.id),
@@ -286,7 +294,7 @@ export function TrainerPage(): JSXElement {
             />
             <Button
               fa={{ icon: "fa-play" }}
-              text={`continue lesson ${currentLesson() + 1}: ${currentName()}`}
+              text={`continue lesson ${lessonNumber(currentLesson(), progressLayout())}: ${currentName()}`}
               disabled={isTestActive()}
               class="px-8 py-4"
               onClick={() => void beginLesson(currentLesson())}
@@ -294,9 +302,9 @@ export function TrainerPage(): JSXElement {
           </span>
         </div>
         <div class="grid gap-2">
-          <For each={LESSONS}>
-            {(lesson, index) => {
-              const state = (): LessonState => lessonState(index());
+          <For each={shown()}>
+            {({ lesson, index }) => {
+              const state = (): LessonState => lessonState(index);
               const locked = (): boolean => state() === "locked";
               const subClass = (): string =>
                 cn("text-sub", {
@@ -317,16 +325,16 @@ export function TrainerPage(): JSXElement {
                     },
                   )}
                   onClick={() => {
-                    if (!locked()) void beginLesson(index());
+                    if (!locked()) void beginLesson(index);
                   }}
                 >
                   <span class={cn("flex items-center gap-2", subClass())}>
-                    <Fa icon={stateIcon(state(), index())} fixedWidth />
-                    {index() + 1}
+                    <Fa icon={stateIcon(state(), index)} fixedWidth />
+                    {lessonNumber(index, progressLayout())}
                   </span>
                   <span class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
                     <span>{nameOf(lesson)}</span>
-                    <Show when={legends(lesson, index())}>
+                    <Show when={legends(lesson, index)}>
                       {(text) => (
                         <span class={cn("font-mono", subClass())}>
                           {text()}
