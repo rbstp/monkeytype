@@ -36,6 +36,7 @@ function readLayout(name: string): LayoutObject {
 
 const qwerty = readLayout("qwerty");
 const dvorak = readLayout("dvorak");
+const canadianFrench = readLayout("canadian_french");
 
 function stored(layouts: Progress["layouts"]): Progress {
   return { version: 3, layouts, attempts: [] };
@@ -60,15 +61,15 @@ describe("LessonNotice", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("names the lesson and the accuracy target without attempts", () => {
+  it("names the weak key holding the lesson without attempts", () => {
     setActiveLesson(2);
     render(() => <LessonNotice />);
     expect(screen.getByRole("button")).toHaveTextContent(
-      "lesson 3: r u · accuracy phase · target 97%",
+      "lesson 3: r u · accuracy phase: r needs 20 more samples",
     );
   });
 
-  it("shows the speed target once every new key is mastered", () => {
+  it("names the wpm shortfall once every new key is mastered", () => {
     setActiveLesson(2);
     render(() => <LessonNotice />);
     recordAttempt({
@@ -83,10 +84,29 @@ describe("LessonNotice", () => {
       ts: 1,
     });
     expect(screen.getByRole("button")).toHaveTextContent(
-      "lesson 3: r u · best 20 · speed phase · target 30 wpm",
+      "lesson 3: r u · best 20 · speed phase: 20 wpm, 10 short of 30",
     );
     setConfigStore("trainerUnlock", "strict");
-    expect(screen.getByRole("button")).toHaveTextContent("target 35 wpm");
+    expect(screen.getByRole("button")).toHaveTextContent("15 short of 35");
+  });
+
+  it("says passed once nothing is short", () => {
+    setActiveLesson(2);
+    render(() => <LessonNotice />);
+    recordAttempt({
+      lesson: "r-u",
+      layout: "qwerty",
+      wpm: 40,
+      acc: 99,
+      perKey: {
+        KeyR: { total: 20, errors: 0 },
+        KeyU: { total: 20, errors: 0 },
+      },
+      ts: 1,
+    });
+    expect(screen.getByRole("button")).toHaveTextContent(
+      "lesson 3: r u · best 40 · passed",
+    );
   });
 
   it("names the lesson by the legends of the input layout", () => {
@@ -113,7 +133,7 @@ describe("LessonNotice", () => {
     );
     render(() => <LessonNotice />);
     expect(screen.getByRole("button")).toHaveTextContent(
-      "lesson 3: r u · best 32 · accuracy phase · target 97%",
+      "lesson 3: r u · best 32 · accuracy phase: r needs 20 more samples",
     );
   });
 
@@ -133,13 +153,22 @@ describe("LessonNotice", () => {
     expect(screen.getByRole("button")).not.toHaveTextContent("best");
   });
 
-  it("reads the target from the unlock setting", () => {
+  it("reads the floor from the unlock setting", () => {
     setActiveLesson(2);
     render(() => <LessonNotice />);
-    setConfigStore("trainerUnlock", "strict");
+    recordAttempt({
+      lesson: "r-u",
+      layout: "qwerty",
+      wpm: 40,
+      acc: 95,
+      perKey: {},
+      ts: 1,
+    });
     expect(screen.getByRole("button")).toHaveTextContent(
-      "lesson 3: r u · accuracy phase · target 98%",
+      "accuracy phase: accuracy 95%, 2 short of 97%",
     );
+    setConfigStore("trainerUnlock", "strict");
+    expect(screen.getByRole("button")).toHaveTextContent("3 short of 98%");
   });
 
   it("updates when a new best is stored", () => {
@@ -166,6 +195,18 @@ describe("LessonNotice", () => {
     );
     setActiveLesson(null);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("names the accuracy target on an accents lesson with no attempts", () => {
+    vi.spyOn(TestState, "inputLayoutObject").mockReturnValue(canadianFrench);
+    setConfigStore("keymapLayout", "canadian_french");
+    setActiveLesson(
+      LESSONS.findIndex((lesson) => lesson.id === "accents-direct"),
+    );
+    render(() => <LessonNotice />);
+    expect(screen.getByRole("button")).toHaveTextContent(
+      "lesson 18: é ç · accuracy phase: target 97%",
+    );
   });
 
   it("shows the lesson picker on click", () => {

@@ -1091,7 +1091,8 @@ export function unlockBlocker(
     return `accuracy phase: ${accLine}`;
   }
   const weak = status.weakKeys[0];
-  if (weak === undefined) return "accuracy phase";
+  // a track learns its keys from the attempts, so the first test has no key to name
+  if (weak === undefined) return `accuracy phase: target ${criteria.minAcc}%`;
   if (weak.samples < weak.required) {
     return `accuracy phase: ${legend(weak)} needs ${weak.required - weak.samples} more samples`;
   }

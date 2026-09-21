@@ -15,15 +15,18 @@ does work`. Decisions that shaped it are in
   card, indicator, toast and commandline all read them. `resolveLayoutName`
   maps "default" to the real keymap layout.
 - The chip from LessonNotice.tsx names the active lesson, its best and the
-  target the phase asks for, and opens LessonPickerModal.tsx, which lists the
+  blocker holding it, and opens LessonPickerModal.tsx, which lists the
   lessons of the current layout with the `lessonState` the trainer page reads.
   LessonResultCard.tsx prints the shortfall or the unlock with retry and next;
   the unlock toast lives in trainer/index.ts.
 - `unlockBlocker` beside `unlockStatus` builds the one sentence naming what is
   holding a lesson: the weakest key and what it needs, or the wpm shortfall in
-  the speed phase. The result card reads it, and `lessonBlocker` beside
-  `lessonState` feeds it to the map row and the picker row of the lesson being
-  practised, and to no other row. Nothing short means no sentence.
+  the speed phase. The result card and the chip read it, and `lessonBlocker`
+  beside `lessonState` feeds it to the map row and the picker row of the lesson
+  being practised, and to no other row. Nothing short means no sentence, which
+  the chip prints as "passed" since it holds the slot while you type. A track
+  whose keys are not known yet names the accuracy floor, since it has no key to
+  name.
 - Key stats keep speed apart from errors: `emaMs` takes only correct,
   non-recovery samples with pauses capped at three times the average, `errRate`
   is its own moving average, and deletes advance the clock. Shift is folded
@@ -170,6 +173,11 @@ does work`. Decisions that shaped it are in
     layoutfluid gate, the filler floor and the warm-up sentence`: three specs,
     the two one-line fixes their asserts demanded, and the warm-up and review
     finish notices read back from headless Chromium.
+
+32. chip-legibility, the fourth reader. `feat(trainer): chip-legibility, read
+    the blocker on the test chip`: the chip drops the phase floor it was
+    guessing and reads `unlockBlocker`, so the card, the map, the picker and
+    the chip say one thing.
 
 ## Open
 

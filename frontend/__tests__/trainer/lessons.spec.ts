@@ -1439,8 +1439,10 @@ describe("lessons", () => {
       ).toBe("accuracy phase: KeyI needs 20 more samples");
     });
 
-    it("says only the phase when nothing is short and no key is weak", () => {
-      expect(blocker({}, attempt({ acc: 99 }))).toBe("accuracy phase");
+    it("names the accuracy target when nothing is short and no key is weak", () => {
+      expect(blocker({}, attempt({ acc: 99 }))).toBe(
+        "accuracy phase: target 97%",
+      );
     });
   });
 
