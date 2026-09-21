@@ -1,6 +1,6 @@
 import { navigate } from "../../controllers/route-controller";
 import { showSuccessNotification } from "../../states/notifications";
-import { isTestActive } from "../../states/test";
+import { inputLayoutObject, isTestActive } from "../../states/test";
 import * as TestLogic from "../../test/test-logic";
 import {
   beginDrill,
@@ -11,6 +11,7 @@ import {
 import { resetKeyStats } from "../../trainer/key-stats";
 import {
   currentLesson,
+  lessonName,
   LESSONS,
   resetProgress,
   unlockedUpTo,
@@ -28,7 +29,10 @@ const notDuringTest = (): boolean => !isTestActive();
 
 function lessonDisplay(index: number): string {
   const locked = unlockedUpTo() < index ? " (locked)" : "";
-  return `${index + 1}. ${LESSONS[index]?.name}${locked}`;
+  const lesson = LESSONS[index];
+  const name =
+    lesson === undefined ? "" : lessonName(lesson, inputLayoutObject());
+  return `${index + 1}. ${name}${locked}`;
 }
 
 const lessonList: CommandsSubgroup = {

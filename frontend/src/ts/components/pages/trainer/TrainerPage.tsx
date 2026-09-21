@@ -17,7 +17,9 @@ import {
   bestOf,
   criteriaFor,
   currentLesson,
+  Lesson,
   lessonChars,
+  lessonName,
   LESSONS,
   progress,
   progressLayout,
@@ -207,12 +209,18 @@ function AttemptsChart(props: { attempts: Attempt[] }): JSXElement {
 }
 
 export function TrainerPage(): JSXElement {
-  const currentName = (): string => LESSONS[currentLesson()]?.name ?? "";
+  const nameOf = (lesson: Lesson): string =>
+    lessonName(lesson, inputLayoutObject());
+  const currentName = (): string => {
+    const lesson = LESSONS[currentLesson()];
+    return lesson === undefined ? "" : nameOf(lesson);
+  };
 
-  const legends = (index: number): string => {
+  const legends = (lesson: Lesson, index: number): string => {
     const layout = inputLayoutObject();
     if (layout === undefined) return "";
-    return lessonChars(index, layout).fresh.join(" ");
+    const fresh = lessonChars(index, layout).fresh.join(" ");
+    return fresh === nameOf(lesson) ? "" : fresh;
   };
 
   const bestLabel = (id: string): string => {
@@ -239,7 +247,7 @@ export function TrainerPage(): JSXElement {
       const last = own[own.length - 1];
       return {
         index,
-        name: lesson.name,
+        name: nameOf(lesson),
         attempts: own.length,
         best: bestOf(lesson.id),
         lastWpm: last?.wpm,
@@ -317,8 +325,8 @@ export function TrainerPage(): JSXElement {
                     {index() + 1}
                   </span>
                   <span class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                    <span>{lesson.name}</span>
-                    <Show when={legends(index())}>
+                    <span>{nameOf(lesson)}</span>
+                    <Show when={legends(lesson, index())}>
                       {(text) => (
                         <span class={cn("font-mono", subClass())}>
                           {text()}

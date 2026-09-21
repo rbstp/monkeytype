@@ -6,6 +6,7 @@ import {
   LanguageObject,
   LanguageSchema,
 } from "@monkeytype/schemas/languages";
+import { LayoutObject } from "@monkeytype/schemas/layouts";
 import { CustomTextSettingsSchema } from "@monkeytype/schemas/results";
 import { ModeSchema } from "@monkeytype/schemas/shared";
 import { CustomTextLimitMode } from "@monkeytype/schemas/util";
@@ -25,14 +26,16 @@ import {
   setCustomTextIndicator,
 } from "../states/core";
 import { showNoticeNotification } from "../states/notifications";
-import { __nonReactive, isTestActive } from "../states/test";
+import { __nonReactive, inputLayoutObject, isTestActive } from "../states/test";
 import * as CustomText from "../test/custom-text";
 import { areUnsortedArraysEqual } from "../utils/arrays";
 import { getLanguage } from "../utils/json-data";
 import { camelCaseToWords } from "../utils/strings";
 import {
   buildLessonWords,
+  Lesson,
   lessonChars,
+  lessonName,
   LESSONS,
   setCurrentLesson,
 } from "./lessons";
@@ -221,6 +224,14 @@ export async function startSession(options: SessionOptions): Promise<boolean> {
   return true;
 }
 
+function lessonIndicator(
+  index: number,
+  lesson: Lesson,
+  layout?: LayoutObject,
+): string {
+  return `lesson ${index + 1}: ${lessonName(lesson, layout)}`;
+}
+
 export async function startLesson(index: number): Promise<boolean> {
   const lesson = LESSONS[index];
   if (lesson === undefined) return false;
@@ -238,7 +249,7 @@ export async function startLesson(index: number): Promise<boolean> {
   });
   const started = await startSession({
     words,
-    indicator: `lesson ${index + 1}: ${lesson.name}`,
+    indicator: lessonIndicator(index, lesson, layout),
     limit: { mode: "word", value: Config.trainerWordsPerTest },
   });
   if (!started) return false;
@@ -260,10 +271,15 @@ function resumeLesson(index: number): void {
     return;
   }
   CustomText.setLimitValue(Config.trainerWordsPerTest);
-  setCustomTextIndicator({
-    name: `lesson ${index + 1}: ${lesson.name}`,
-    isLong: false,
-  });
+  const indicate = (layout?: LayoutObject): void => {
+    if (activeLesson() !== index) return;
+    setCustomTextIndicator({
+      name: lessonIndicator(index, lesson, layout),
+      isLong: false,
+    });
+  };
+  indicate(inputLayoutObject());
+  __nonReactive.getInputLayout().then(indicate).catch(console.error);
 }
 
 export function stopLesson(options = { restoreMode: true }): void {

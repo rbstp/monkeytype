@@ -18,7 +18,7 @@ Gaps:
 - Key stats v2 keeps speed apart from errors: emaMs takes only correct, non-recovery samples with pauses capped at three times the average, errRate is its own moving average, and deletes advance the clock. Shift is still folded into the base key in key-stats.ts. Panel and tips label keys slow or error-prone.
 - Unlocks read the configured floor through criteriaFor and, since the mastery gate, `masteryOf` in lessons.ts pools perKey over the last three attempts: a new key needs its share of a 60-sample budget (20 for a two-key lesson, 3 for capitals) and at most 3% errors before `unlockStatus` says ok. The result card prints the first shortfall.
 - Early lessons read real words since the adaptive-words slice: `largestCorpus` in session.ts loads english_10k, `buildLessonWords` draws by damped rank when the corpus is ordered by frequency and never mutates a real word. The 120-word pool is still built once per startLesson; weak-key weighting and mid-lesson rebuilds are build-order step 17.
-- Layout is assumed qwerty in the lesson names hardcoded in LESSONS in lessons.ts. "default" resolves through keymapLayout in utils/layout-name.ts, and progress is per layout since Progress v2: `progressLayout()` in lessons.ts names the entry that `currentLesson()`, `unlockedUpTo()` and `bestOf()` read.
+- Lesson names follow the layout since layout-aware-curriculum: `lessonName` in lessons.ts joins the fresh legends for the lessons whose name is their qwerty legends and keeps the fixed names, `lessonKeyLegend` resolves the numbers through `layer: "auto"`, and every surface (page, chip, card, indicator, toast, commandline) reads it. "default" resolves through keymapLayout in utils/layout-name.ts, and progress is per layout since Progress v2: `progressLayout()` in lessons.ts names the entry that `currentLesson()`, `unlockedUpTo()` and `bestOf()` read.
 - Config leaks, closed by foundations A: lifecycle.ts sets the store before it fires the finished event, the persisted config hook in session.ts keeps lesson values out of the saved config, and index.ts scores an attempt only when isLessonText accepts the target words.
 - Progress v2 migrates v1 through the localStorage hook and on backup import, keeps 1000 attempts with at most 50 per lesson and layout, and stores a best per lesson so trimming never evicts one. Key stats do the same since key stats v2. The backup travels as a file: `exportBackupFile` and `importBackupFile` in trainer/actions.ts, wired to the trainer page header and the two commandline commands.
 
@@ -151,7 +151,7 @@ canadian_french lesson 12 reads "z é", azerty digits resolve to layer 1. Progre
 
 lessonLegends exists, so names are about 40 lines. A layer "auto" resolved with findLayoutKey fixes digits. Dead keys have no data anywhere; use an override table seeded with canadian_french. The reviewer cut the frequency generator, plan files and motion hints.
 
-First slice: legend-derived names plus auto layer for numbers, no storage change.
+First slice landed in `feat(trainer): layout-aware-curriculum, legend-derived names and an auto layer`: `lessonName` and `lessonKeyLegend` in lessons.ts, `layer: "auto"` with a `charClass` on the numbers lesson so azerty digits resolve to the shifted layer, the home row lesson named by its legends like the two-key lessons, no storage change. Per-layout progress landed earlier with Progress v2 in foundations C. The dead-key override table belongs to curriculum-tracks.
 
 Unblocked by foundations B, which resolves the real layout.
 
@@ -217,7 +217,7 @@ Next, honest data and surfaces on it:
 
 Later, the French goal and the rest:
 
-14. layout-aware-curriculum: legend-derived names, auto layer, per-layout progress.
+14. layout-aware-curriculum: legend-derived names, auto layer, per-layout progress. Done in `feat(trainer): layout-aware-curriculum, legend-derived names and an auto layer`; per-layout progress had landed with step 7.
 15. curriculum-tracks: capitals by hand and the punctuation ladder, then the French accents track with a dead-key table.
 16. pairwise-stats: confusion pairs, then bigram transitions.
 17. adaptive-words: weak-key weighting and mid-lesson rebuilds.
@@ -234,6 +234,6 @@ Every build-order step is run with the block below in its prompt. Later prompts 
 Standing requirements, carry these into every step
 - No em dashes anywhere: code, comments, commit messages, PR title and body, docs, and the next prompt you write.
 - No code comments unless a line would be misread without one. When needed, one short line saying why, never what.
-- Steps 7 to 13 go on one branch from `trainer` at b556c59 or later, one commit per step in the `feat(trainer): ...` style of the history, each step validated (specs, typecheck, lint, format, madge, headless Chromium) and its roadmap lines updated before the next step starts. Do not open a PR between steps.
-- Once step 13 is committed, spawn a subagent with model opus to review the full branch diff against origin/trainer. Ask it to check correctness, any behaviour change when no lesson is active, missing test coverage, stale line refs in docs, and violations of the two rules above. Fix what it finds and fold each fix into the step commit it belongs to with `fixup!` commits and `GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash origin/trainer`. Do this even if the diff looks small.
-- Then push the branch, open one PR against trainer, subscribe to its activity and schedule an hourly check-in until it is merged or closed. When the PR is merged, stop iterating and say so; the next prompt (step 14 onward) is written on request. If a step is blocked on a decision only the user can make, say so and stop. If the PR is closed without merging, stop and ask.
+- Steps 14 to 20 go on one branch from `trainer` at ba863f5 or later, one commit per step in the `feat(trainer): ...` style of the history (step 15 may take two, 15a and 15b), each step validated (specs, typecheck, lint, format, madge, headless Chromium) and its roadmap lines updated before the next step starts. Do not open a PR between steps.
+- Once step 20 is committed, spawn a subagent with model opus to review the full branch diff against origin/trainer. Ask it to check correctness, any behaviour change when no lesson or drill is active, missing test coverage, stale line refs in docs, and violations of the two rules above. Fix what it finds and fold each fix into the step commit it belongs to with `fixup!` commits and `GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash origin/trainer`. Expect conflicts in files every step touches (lessons.ts, lessons.spec.ts); resolve them per step rather than taking a later step's version, and set `GIT_EDITOR` to a command that strips comment lines so no squash message keeps a "# This is a combination" header. Do this even if the diff looks small.
+- Then push the branch, open one PR against trainer, subscribe to its activity and schedule an hourly check-in until it is merged or closed. When the PR is merged, stop iterating and say so; the next prompt is written on request. If a step is blocked on a decision only the user can make, say so and stop. If the PR is closed without merging, stop and ask.

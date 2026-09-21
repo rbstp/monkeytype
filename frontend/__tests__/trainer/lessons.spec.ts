@@ -13,6 +13,8 @@ import {
   defaultCriteria,
   lessonChars,
   lessonIndex,
+  lessonKeyLegend,
+  lessonName,
   LESSONS,
   masteryOf,
   masterySamplesFor,
@@ -40,12 +42,19 @@ function mastered(id: string, samples = 20): Attempt["perKey"] {
   );
 }
 
-const qwerty = JSON.parse(
-  readFileSync(
-    `${import.meta.dirname}/../../static/layouts/qwerty.json`,
-    "utf-8",
-  ),
-) as LayoutObject;
+function readLayout(name: string): LayoutObject {
+  return JSON.parse(
+    readFileSync(
+      `${import.meta.dirname}/../../static/layouts/${name}.json`,
+      "utf-8",
+    ),
+  ) as LayoutObject;
+}
+
+const qwerty = readLayout("qwerty");
+const dvorak = readLayout("dvorak");
+const azerty = readLayout("azerty");
+const colemak = readLayout("colemak");
 
 function seeded(seed: number): () => number {
   let state = seed;
@@ -112,6 +121,55 @@ describe("lessons", () => {
       const chars = lessonChars(capitals, qwerty);
       expect(chars.fresh).toContain("A");
       expect(chars.allowed).toContain("a");
+    });
+
+    it("resolves digits through the auto layer on any layout", () => {
+      const numbers = lessonIndex("numbers");
+      const digits = [..."1234567890"];
+      expect(lessonChars(numbers, qwerty).fresh).toEqual(digits);
+      expect(lessonChars(numbers, azerty).fresh).toEqual(digits);
+      expect(lessonChars(numbers, colemak).fresh).toEqual(digits);
+      expect(lessonChars(numbers, azerty).allowed).not.toContain("&");
+    });
+  });
+
+  describe("lessonName", () => {
+    const named = (id: string, layout?: LayoutObject): string =>
+      lessonName(LESSONS[lessonIndex(id)] as (typeof LESSONS)[0], layout);
+
+    it("derives the two-key and home row names from the layout legends", () => {
+      expect(named("home-row", qwerty)).toBe("a s d f j k l ;");
+      expect(named("home-row", dvorak)).toBe("a o e u h t n s");
+      expect(named("e-i", qwerty)).toBe("e i");
+      expect(named("e-i", dvorak)).toBe(". c");
+      expect(named("c-comma", dvorak)).toBe("j w");
+      expect(named("z-slash", colemak)).toBe("z /");
+    });
+
+    it("keeps the fixed names on every layout", () => {
+      for (const id of ["capitals", "punctuation", "numbers"]) {
+        expect(named(id, qwerty)).toBe(id);
+        expect(named(id, dvorak)).toBe(id);
+      }
+    });
+
+    it("falls back to the qwerty name without a layout", () => {
+      expect(named("e-i")).toBe("e i");
+      expect(named("home-row")).toBe("a s d f j k l ;");
+    });
+  });
+
+  describe("lessonKeyLegend", () => {
+    it("reads the lesson layer, or the first layer that fits the class", () => {
+      const capitalsLesson = LESSONS[capitals] as (typeof LESSONS)[0];
+      const numbers = LESSONS[lessonIndex("numbers")] as (typeof LESSONS)[0];
+      expect(lessonKeyLegend(capitalsLesson, "KeyA", qwerty)).toBe("A");
+      expect(lessonKeyLegend(numbers, "Digit1", azerty)).toBe("1");
+      expect(lessonKeyLegend(numbers, "Digit1", qwerty)).toBe("1");
+      expect(lessonKeyLegend(numbers, "KeyA", qwerty)).toBe("a");
+      expect(
+        lessonKeyLegend(LESSONS[1] as (typeof LESSONS)[0], "KeyE", dvorak),
+      ).toBe(".");
     });
   });
 
@@ -323,6 +381,24 @@ describe("lessons", () => {
           { id: "e-i", name: "e i", newKeys: ["KeyE", "KeyI"] },
         ),
       ).toEqual({ KeyE: { total: 2, errors: 1 } });
+    });
+
+    it("counts every layer for an auto lesson", () => {
+      expect(
+        countPerKey(
+          [
+            { keycode: "Digit1", shifted: false, correct: true },
+            { keycode: "Digit1", shifted: true, correct: false },
+          ],
+          {
+            id: "numbers",
+            name: "numbers",
+            newKeys: ["Digit1"],
+            layer: "auto",
+            charClass: "digit",
+          },
+        ),
+      ).toEqual({ Digit1: { total: 2, errors: 1 } });
     });
 
     it("counts only shifted samples for a shifted lesson", () => {

@@ -7,6 +7,8 @@ import { beginLesson } from "../../../trainer/actions";
 import {
   criteriaFor,
   Lesson,
+  lessonKeyLegend,
+  lessonName,
   LESSONS,
   masteryErrorRate,
   progress,
@@ -16,7 +18,6 @@ import {
   WeakKey,
 } from "../../../trainer/lessons";
 import { getActiveLesson } from "../../../trainer/session";
-import { keycodeToLayoutKey } from "../../../utils/key-converter";
 import { Button } from "../../common/Button";
 
 type Active = { index: number; lesson: Lesson };
@@ -32,10 +33,11 @@ export function LessonResultCard(): JSXElement {
 
   const legend = (key: WeakKey): string => {
     const layout = inputLayoutObject();
+    const lesson = active()?.lesson;
     const label =
-      layout === undefined
+      layout === undefined || lesson === undefined
         ? undefined
-        : keycodeToLayoutKey(key.keycode, layout, active()?.lesson.layer ?? 0);
+        : lessonKeyLegend(lesson, key.keycode, layout);
     return label ?? key.keycode;
   };
 
@@ -57,9 +59,10 @@ export function LessonResultCard(): JSXElement {
     }
     const status = unlockStatus(attempts, current.lesson.id, layout, criteria);
     if (status.ok) {
-      return current.index + 1 < LESSONS.length
-        ? `lesson ${current.index + 2} unlocked`
-        : "lesson passed";
+      const following = LESSONS[current.index + 1];
+      return following === undefined
+        ? "lesson passed"
+        : `lesson ${current.index + 2} unlocked: ${lessonName(following, inputLayoutObject())}`;
     }
     if (status.wpmShort > 0) {
       return `${Math.round(latest.wpm)} wpm, ${status.wpmShort} short of ${criteria.minWpm}`;

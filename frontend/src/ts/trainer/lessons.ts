@@ -2,19 +2,39 @@ import { z } from "zod";
 import { TrainerUnlock } from "@monkeytype/schemas/configs";
 import { LayoutObject } from "@monkeytype/schemas/layouts";
 import { Config, getConfig } from "../config/store";
-import { Keycode } from "../constants/keys";
+import { Keycode, qwertyKeycodeKeymap } from "../constants/keys";
 import { configEvent } from "../events/config";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { keycodeToLayoutKey } from "../utils/key-converter";
 import { resolveLayoutName } from "../utils/layout-name";
 import { KeySample } from "./key-stats";
 
+export type CharClass = "digit";
+
 export type Lesson = {
   id: string;
   name: string;
   newKeys: Keycode[];
-  layer?: 0 | 1;
+  layer?: 0 | 1 | "auto";
+  charClass?: CharClass;
 };
+
+const charClassTest: Record<CharClass, (legend: string) => boolean> = {
+  digit: (legend) => /^\p{Nd}$/u.test(legend),
+};
+
+const qwertyRows = [
+  "`1234567890-=",
+  "qwertyuiop[]\\",
+  "asdfghjkl;'",
+  "zxcvbnm,./",
+  " ",
+];
+const qwertyLegends: Partial<Record<Keycode, string>> = Object.fromEntries(
+  qwertyKeycodeKeymap.flatMap((row, rowIndex) =>
+    row.map((keycode, keyIndex) => [keycode, qwertyRows[rowIndex]?.[keyIndex]]),
+  ),
+);
 
 const letterKeys: Keycode[] = [
   "KeyA",
@@ -48,7 +68,7 @@ const letterKeys: Keycode[] = [
 export const LESSONS: Lesson[] = [
   {
     id: "home-row",
-    name: "home row",
+    name: "a s d f j k l ;",
     newKeys: [
       "KeyA",
       "KeyS",
@@ -80,6 +100,8 @@ export const LESSONS: Lesson[] = [
   {
     id: "numbers",
     name: "numbers",
+    layer: "auto",
+    charClass: "digit",
     newKeys: [
       "Digit1",
       "Digit2",
@@ -101,10 +123,43 @@ export function lessonIndex(id: string): number {
 
 export type LessonChars = { allowed: string[]; fresh: string[] };
 
-function lessonLegends(lesson: Lesson, layout: LayoutObject): string[] {
+const layers = [0, 1, 2, 3];
+
+// digits sit on the shifted layer on azerty, so auto takes the first fit
+export function lessonKeyLegend(
+  lesson: Lesson,
+  keycode: Keycode,
+  layout: LayoutObject,
+): string | undefined {
+  if (lesson.layer !== "auto") {
+    return keycodeToLayoutKey(keycode, layout, lesson.layer ?? 0);
+  }
+  const fits = charClassTest[lesson.charClass ?? "digit"];
+  for (const layer of layers) {
+    const legend = keycodeToLayoutKey(keycode, layout, layer);
+    if (legend !== undefined && fits(legend)) return legend;
+  }
+  return keycodeToLayoutKey(keycode, layout, 0);
+}
+
+export function lessonLegends(lesson: Lesson, layout: LayoutObject): string[] {
   return lesson.newKeys
-    .map((keycode) => keycodeToLayoutKey(keycode, layout, lesson.layer ?? 0))
+    .map((keycode) => lessonKeyLegend(lesson, keycode, layout))
     .filter((legend): legend is string => legend !== undefined);
+}
+
+function usesLegendName(lesson: Lesson): boolean {
+  return (
+    lesson.layer === undefined &&
+    lesson.name === lesson.newKeys.map((key) => qwertyLegends[key]).join(" ")
+  );
+}
+
+// only names that are their qwerty legends follow the layout
+export function lessonName(lesson: Lesson, layout?: LayoutObject): string {
+  if (layout === undefined || !usesLegendName(lesson)) return lesson.name;
+  const legends = lessonLegends(lesson, layout);
+  return legends.length === 0 ? lesson.name : legends.join(" ");
 }
 
 export function lessonChars(index: number, layout: LayoutObject): LessonChars {

@@ -79,6 +79,7 @@ function readLayout(name: string): LayoutObject {
 }
 
 const qwerty = readLayout("qwerty");
+const dvorak = readLayout("dvorak");
 
 function attempt(
   lesson: string,
@@ -106,7 +107,9 @@ describe("TrainerPage", () => {
 
   it("lists every lesson and hides the chart without attempts", () => {
     render(() => <TrainerPage />);
-    expect(screen.getAllByRole("button", { name: /home row/ })).toHaveLength(2);
+    expect(
+      screen.getAllByRole("button", { name: /a s d f j k l ;/ }),
+    ).toHaveLength(2);
     expect(screen.queryByTestId("chart")).toBeNull();
     expect(screen.queryByRole("table")).toBeNull();
   });
@@ -153,7 +156,7 @@ describe("TrainerPage", () => {
     setConfigStore("trainerUnlock", "normal");
     const rows = screen.getAllByRole("row").slice(1);
     expect(rows).toHaveLength(LESSONS.length);
-    expect(rows[0]).toHaveTextContent("1. home row");
+    expect(rows[0]).toHaveTextContent("1. a s d f j k l ;");
     expect(rows[0]).toHaveTextContent("2");
     expect(rows[0]).toHaveTextContent("44");
     expect(rows[0]).toHaveTextContent("32");
@@ -162,6 +165,26 @@ describe("TrainerPage", () => {
     expect(rows[1]).toHaveTextContent("2. e i");
     expect(rows[1]).toHaveTextContent("current");
     expect(rows[2]).toHaveTextContent("locked");
+  });
+
+  it("names the lessons by the legends of the input layout", () => {
+    vi.spyOn(TestState, "inputLayoutObject").mockReturnValue(dvorak);
+    replaceProgress({
+      version: 2,
+      layouts: { dvorak: { current: 1, unlocked: 1, best: {} } },
+      attempts: [attempt("home-row", 40, 99, "dvorak")],
+    });
+    setConfigStore("layout", "dvorak");
+    render(() => <TrainerPage />);
+    expect(
+      screen.getByRole("button", { name: /continue lesson 2: \. c/ }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("a o e u h t n s")).toHaveLength(1);
+    expect(screen.getAllByText("capitals")).toHaveLength(1);
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows[0]).toHaveTextContent("1. a o e u h t n s");
+    expect(rows[1]).toHaveTextContent("2. . c");
+    expect(rows[12]).toHaveTextContent("13. capitals");
   });
 
   it("exports through the shared action", () => {

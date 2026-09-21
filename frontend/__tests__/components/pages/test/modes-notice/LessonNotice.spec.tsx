@@ -1,10 +1,13 @@
+import { LayoutObject } from "@monkeytype/schemas/layouts";
 import { fireEvent, render, screen } from "@solidjs/testing-library";
+import { readFileSync } from "fs";
 import { createSignal } from "solid-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LessonNotice } from "../../../../../src/ts/components/pages/test/modes-notice/LessonNotice";
 import { setConfigStore } from "../../../../../src/ts/config/store";
 import * as RouteController from "../../../../../src/ts/controllers/route-controller";
+import * as TestState from "../../../../../src/ts/states/test";
 import {
   LESSONS,
   Progress,
@@ -20,6 +23,22 @@ vi.mock("../../../../../src/ts/controllers/route-controller", () => ({
 vi.mock("../../../../../src/ts/trainer/session", () => ({
   getActiveLesson: vi.fn(),
 }));
+vi.mock("../../../../../src/ts/utils/json-data", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  getLayout: async (name: string) => readLayout(name),
+}));
+
+function readLayout(name: string): LayoutObject {
+  return JSON.parse(
+    readFileSync(
+      `${import.meta.dirname}/../../../../../static/layouts/${name}.json`,
+      "utf-8",
+    ),
+  ) as LayoutObject;
+}
+
+const qwerty = readLayout("qwerty");
+const dvorak = readLayout("dvorak");
 
 function stored(layouts: Progress["layouts"]): Progress {
   return { version: 2, layouts, attempts: [] };
@@ -32,6 +51,7 @@ describe("LessonNotice", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(Session.getActiveLesson).mockImplementation(() => activeLesson());
+    vi.spyOn(TestState, "inputLayoutObject").mockReturnValue(qwerty);
     setActiveLesson(null);
     resetProgress();
     setConfigStore("trainerUnlock", "normal");
@@ -50,6 +70,15 @@ describe("LessonNotice", () => {
     expect(screen.getByRole("button")).toHaveTextContent(
       "lesson 3: r u · target 30 / 97%",
     );
+  });
+
+  it("names the lesson by the legends of the input layout", () => {
+    vi.spyOn(TestState, "inputLayoutObject").mockReturnValue(dvorak);
+    setActiveLesson(2);
+    render(() => <LessonNotice />);
+    expect(screen.getByRole("button")).toHaveTextContent("lesson 3: p g");
+    setActiveLesson(12);
+    expect(screen.getByRole("button")).toHaveTextContent("lesson 13: capitals");
   });
 
   it("reads best from the active lesson only", () => {
@@ -109,7 +138,9 @@ describe("LessonNotice", () => {
     const { container } = render(() => <LessonNotice />);
     expect(container).toBeEmptyDOMElement();
     setActiveLesson(0);
-    expect(screen.getByRole("button")).toHaveTextContent("lesson 1: home row");
+    expect(screen.getByRole("button")).toHaveTextContent(
+      "lesson 1: a s d f j k l ;",
+    );
     setActiveLesson(null);
     expect(container).toBeEmptyDOMElement();
   });

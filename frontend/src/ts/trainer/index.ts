@@ -19,6 +19,7 @@ import {
   countPerKey,
   isLessonText,
   lessonChars,
+  lessonName,
   LESSONS,
   progressLayout,
   recordAttempt,
@@ -88,9 +89,10 @@ export function onTestFinished(test: FinishedTest): void {
         perKey: countPerKey(samples, lesson),
         ts: Date.now(),
       });
-      if (unlocked) {
+      const following = LESSONS[lessonIndex + 1];
+      if (unlocked && following !== undefined) {
         showSuccessNotification(
-          `Lesson ${lessonIndex + 2} unlocked: ${LESSONS[lessonIndex + 1]?.name}`,
+          `Lesson ${lessonIndex + 2} unlocked: ${lessonName(following, layout)}`,
           { durationMs: 5000 },
         );
       }

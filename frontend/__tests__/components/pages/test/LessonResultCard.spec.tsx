@@ -44,6 +44,7 @@ function readLayout(name: string): LayoutObject {
 }
 
 const qwerty = readLayout("qwerty");
+const dvorak = readLayout("dvorak");
 
 const resultAt = 1_000_000;
 
@@ -193,7 +194,31 @@ describe("LessonResultCard", () => {
     );
     recordAttempt(attempt());
     expect(screen.getByTestId("lessonresult")).toHaveTextContent(
-      "lesson 3 unlocked",
+      "lesson 3 unlocked: r u",
+    );
+  });
+
+  it("names the unlocked lesson and the weak key by the input layout", () => {
+    vi.spyOn(TestState, "inputLayoutObject").mockReturnValue(dvorak);
+    setActiveLesson(1);
+    finish();
+    replaceProgress(stored([attempt()]));
+    render(() => <LessonResultCard />);
+    expect(screen.getByTestId("lessonresult")).toHaveTextContent(
+      "lesson 3 unlocked: p g",
+    );
+    replaceProgress(
+      stored([
+        attempt({
+          perKey: {
+            KeyE: { total: 20, errors: 0 },
+            KeyI: { total: 8, errors: 0 },
+          },
+        }),
+      ]),
+    );
+    expect(screen.getByTestId("lessonresult")).toHaveTextContent(
+      "passed the bar, c needs 12 more samples",
     );
   });
 
