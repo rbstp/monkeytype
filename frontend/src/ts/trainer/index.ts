@@ -30,6 +30,7 @@ import {
   recordAttempt,
 } from "./lessons";
 import { getActiveDrill, getActiveLesson, rebuildLessonWords } from "./session";
+import { recordTransitions } from "./transitions";
 
 export { tracksNextKey } from "./session";
 
@@ -67,6 +68,7 @@ export function onTestFinished(test: FinishedTest): void {
       if (recordKeys) {
         recordSamples(statsName, samples);
         recordConfusions(statsName, samples);
+        recordTransitions(statsName, samples);
         if (lessonIndex !== null && getActivePage() === "test") {
           rebuildLessonWords().catch(console.error);
         }

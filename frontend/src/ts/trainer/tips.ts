@@ -1,12 +1,20 @@
 import { ConfusionKind } from "./confusions";
 import { Finger, FINGER_LABEL, FINGERS } from "./finger";
 import { accuracy, FingerSummary, RankedKey } from "./key-stats";
+import { TransitionKind } from "./transitions";
 
 export type ConfusionTip = {
   expected: string;
   typed: string;
   kind: ConfusionKind;
   count: number;
+};
+
+export type TransitionTip = {
+  prev: string;
+  key: string;
+  kind: TransitionKind;
+  emaMs: number;
 };
 
 type TipInput = {
@@ -18,6 +26,7 @@ type TipInput = {
   fingers: Record<Finger, FingerSummary>;
   weakKeys: (RankedKey & { legend: string })[];
   confusions?: ConfusionTip[];
+  transitions?: TransitionTip[];
 };
 
 const targetAcc = 97;
@@ -113,11 +122,26 @@ function confusionTip(input: TipInput): string | undefined {
   return `You press ${worst.typed} when you mean ${worst.expected} (${worst.kind}, ${worst.count} times): ${confusionAdvice[worst.kind]}.`;
 }
 
+const transitionAdvice: Record<TransitionKind, string> = {
+  "same finger":
+    "one finger has to leave a key and land on the next, so move the whole hand instead of stretching",
+  "same hand":
+    "one hand carries both keys, so keep the other hand home and roll the pair in one motion",
+  alternating: "practise the pair on its own for a few tests",
+};
+
+function transitionTip(input: TipInput): string | undefined {
+  const worst = input.transitions?.[0];
+  if (worst === undefined) return undefined;
+  return `${worst.prev} then ${worst.key} takes ${Math.round(worst.emaMs)} ms (${worst.kind}): ${transitionAdvice[worst.kind]}.`;
+}
+
 export function buildTips(input: TipInput): string[] {
   return [
     accuracyTip(input),
     rhythmTip(input),
     confusionTip(input),
+    transitionTip(input),
     keysTip(input),
   ]
     .filter((tip): tip is string => tip !== undefined)

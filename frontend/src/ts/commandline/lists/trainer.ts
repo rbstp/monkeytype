@@ -27,6 +27,7 @@ import {
   isSessionActive,
   stopLesson,
 } from "../../trainer/session";
+import { resetTransitions } from "../../trainer/transitions";
 import { Command, CommandsSubgroup } from "../types";
 
 const icon = "fa-graduation-cap";
@@ -137,6 +138,7 @@ const commands: Command[] = [
     exec: (): void => {
       resetKeyStats();
       resetConfusions();
+      resetTransitions();
       resetKeyHistory();
       showSuccessNotification("Key stats reset");
     },

@@ -20,6 +20,11 @@ import {
   replaceProgress,
   upgradeProgress,
 } from "./lessons";
+import {
+  getTransitions,
+  replaceTransitions,
+  TransitionsSchema,
+} from "./transitions";
 
 export const BackupSchema = z.object({
   version: z
@@ -29,8 +34,9 @@ export const BackupSchema = z.object({
       z.literal(3),
       z.literal(4),
       z.literal(5),
+      z.literal(6),
     ])
-    .transform(() => 5 as const),
+    .transform(() => 6 as const),
   keyStats: z.union([
     KeyStatsSchema,
     KeyStatsV1Schema.transform(upgradeKeyStats),
@@ -41,16 +47,18 @@ export const BackupSchema = z.object({
     ProgressV1Schema.transform(upgradeProgress),
   ]),
   confusions: ConfusionsSchema.optional(),
+  transitions: TransitionsSchema.optional(),
   keyHistory: KeyHistorySchema.optional(),
 });
 export type Backup = z.infer<typeof BackupSchema>;
 
 export function exportBackup(): string {
   const backup: Backup = {
-    version: 5,
+    version: 6,
     keyStats: getKeyStats(),
     progress: progress(),
     confusions: getConfusions(),
+    transitions: getTransitions(),
     keyHistory: getKeyHistory(),
   };
   return JSON.stringify(backup);
@@ -71,6 +79,7 @@ export function importBackup(json: string): boolean {
   replaceKeyStats(backup.keyStats);
   replaceProgress(backup.progress);
   replaceConfusions(backup.confusions ?? { version: 1, layouts: {} });
+  replaceTransitions(backup.transitions ?? { version: 1, layouts: {} });
   replaceKeyHistory(backup.keyHistory ?? { version: 1, layouts: {} });
   return true;
 }

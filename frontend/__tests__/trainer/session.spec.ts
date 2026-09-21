@@ -52,6 +52,10 @@ import {
   resetConfusions,
 } from "../../src/ts/trainer/confusions";
 import { startDrill } from "../../src/ts/trainer/drill";
+import {
+  getLayoutTransitions,
+  resetTransitions,
+} from "../../src/ts/trainer/transitions";
 import * as JsonData from "../../src/ts/utils/json-data";
 
 vi.mock("../../src/ts/test/events/stats", () => ({
@@ -153,6 +157,7 @@ describe("trainer session", () => {
     resetProgress();
     resetKeyStats();
     resetConfusions();
+    resetTransitions();
     noticeMock.mockClear();
     successMock.mockClear();
     saveConfigMock.mockClear();
@@ -847,6 +852,55 @@ describe("trainer session", () => {
     expect(getLayoutConfusions("qwerty")).toEqual({ KeyD: { KeyK: 1 } });
     expect(getKeyStats().layouts["qwerty"]?.["KeyD"]?.total).toBe(2);
     expect(progress().attempts).toHaveLength(0);
+  });
+
+  it("records the gap between two correct inserts as a transition", async () => {
+    onTestFinished({
+      eventLog: {
+        version: 1,
+        events: [
+          {
+            type: "input",
+            testMs: 100,
+            data: {
+              inputType: "insertText",
+              data: "d",
+              correct: true,
+              wordIndex: 0,
+              charIndex: 0,
+              inputValue: "",
+            },
+          },
+          {
+            type: "input",
+            testMs: 400,
+            data: {
+              inputType: "insertText",
+              data: "a",
+              correct: true,
+              wordIndex: 0,
+              charIndex: 1,
+              inputValue: "",
+            },
+          },
+        ],
+        context: {
+          targetWords: ["dad "],
+          mode: "words",
+          mode2: "10",
+          bailedOut: false,
+          koreanStatus: false,
+        },
+      },
+      completedEvent: { wpm: 40, acc: 100, bailedOut: false } as CompletedEvent,
+      invalid: false,
+      samplesUsable: true,
+      countsForLesson: true,
+    });
+    await flush();
+    expect(getLayoutTransitions("qwerty")).toEqual({
+      KeyD: { KeyA: { emaMs: 300, count: 1 } },
+    });
   });
 
   it("leaves a test alone when no lesson is active", async () => {

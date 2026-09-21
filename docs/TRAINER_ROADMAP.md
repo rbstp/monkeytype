@@ -24,8 +24,9 @@ does work`. Decisions that shaped it are in
   key, which carries the spacing, and to the base key, which carries only the
   correctness.
 - `worstKeys` and `keyLabel` mark keys slow or error-prone, `worstConfusions`
-  and `classifyConfusion` name the worst confusion pairs, and the weak-keys
-  panel and `buildTips` show both. `prev` is on every sample and still unread.
+  and `classifyConfusion` name the worst confusion pairs, and `worstTransitions`
+  and `classifyTransition` name the one-handed pairs running at least half again
+  the layout's median. The weak-keys panel and `buildTips` show all three.
 - Unlocks read the configured floor through `criteriaFor`. `masteryOf` pools
   `perKey` over the last three attempts, so a new key needs its share of a
   60-sample budget and at most 3% errors before `unlockStatus` says ok, and the
@@ -48,8 +49,8 @@ does work`. Decisions that shaped it are in
   never moves an unlocked position; v1 and v2 migrate through the localStorage
   hook and on backup import. It keeps 1000 attempts, at most 50 per lesson and
   layout, and a best per lesson that trimming never evicts. Key stats do the
-  same. `exportBackupFile` and `importBackupFile` carry version 5: key stats,
-  progress, confusions and the key history.
+  same. `exportBackupFile` and `importBackupFile` carry version 6: key stats,
+  progress, confusions, transitions and the key history.
 - The trainer page shows the lesson map, a continue button, an attempts chart
   against the configured floors, a per-lesson table and the key changes from
   `keyDeltas`. `heatColors` tints the keymap's border ring by speed or errors.
@@ -101,12 +102,14 @@ does work`. Decisions that shaped it are in
     config PATCH accepts the key.
 20. progress-dashboard, key history. `feat(trainer): progress-dashboard, key
     history and deltas`: a daily snapshot per key and "faster than last week".
+21. roadmap-cleanup. `docs(trainer): roadmap-cleanup, trim the roadmap to what
+    still does work`: this doc, and decision 8 in the decisions doc.
+22. pairwise-transitions. `feat(trainer): pairwise-transitions, name the slow
+    same-finger bigrams`: a `trainerTransitions` store, a panel row, a tip and
+    backup version 6.
 
 ## Open
 
-- Bigram transitions. Name the slow same-finger pairs, since `prev` is on every
-  sample and nothing reads it. The store has to stay per layout and capped the
-  way confusions.ts is, and Space belongs in neither half of a pair.
 - N-gram fillers. Build pseudo words from the corpus bigrams instead of
   alternating vowels and consonants, so a filler reads like a word. The table
   must come from the word list passed in, never from `Math.random`, or the

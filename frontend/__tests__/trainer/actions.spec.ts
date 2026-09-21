@@ -171,7 +171,7 @@ describe("trainer actions", () => {
         version: number;
         progress: { layouts: Record<string, { current: string }> };
       };
-      expect(parsed.version).toBe(5);
+      expect(parsed.version).toBe(6);
       expect(parsed.progress.layouts["qwerty"]?.current).toBe("e-i");
     });
 
