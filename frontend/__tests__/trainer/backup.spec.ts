@@ -27,7 +27,7 @@ describe("backup", () => {
 
     expect(getKeyStats().layouts["qwerty"]?.["KeyA"]?.total).toBe(1);
     expect(currentLesson()).toBe(3);
-    expect(JSON.parse(json)).toMatchObject({ version: 2 });
+    expect(JSON.parse(json)).toMatchObject({ version: 3 });
   });
 
   it("upgrades a version 1 backup on import", () => {
@@ -44,12 +44,12 @@ describe("backup", () => {
         ],
       },
     });
-    expect(parseBackup(json)).toMatchObject({ version: 2 });
+    expect(parseBackup(json)).toMatchObject({ version: 3 });
     expect(importBackup(json)).toBe(true);
     expect(progress()).toEqual({
-      version: 2,
+      version: 3,
       layouts: {
-        qwerty: { current: 1, unlocked: 2, best: { "home-row": 40 } },
+        qwerty: { current: "e-i", unlocked: "r-u", best: { "home-row": 40 } },
       },
       attempts: [
         {
@@ -62,7 +62,52 @@ describe("backup", () => {
         },
       ],
     });
-    expect(exportBackup()).toContain('"version":2');
+    expect(exportBackup()).toContain('"version":3');
+  });
+
+  it("upgrades a version 2 backup on import and keeps the unlocked lesson", () => {
+    const json = JSON.stringify({
+      version: 2,
+      keyStats: { version: 2, layouts: {} },
+      progress: {
+        version: 2,
+        layouts: {
+          qwerty: { current: 12, unlocked: 13, best: { capitals: 39 } },
+        },
+        attempts: [
+          {
+            lesson: "capitals",
+            layout: "qwerty",
+            wpm: 39,
+            acc: 99,
+            perKey: {},
+            ts: 1,
+          },
+        ],
+      },
+    });
+    expect(importBackup(json)).toBe(true);
+    expect(progress()).toEqual({
+      version: 3,
+      layouts: {
+        qwerty: {
+          current: "capitals-left",
+          unlocked: "quote-minus",
+          best: { "capitals-left": 39 },
+        },
+      },
+      attempts: [
+        {
+          lesson: "capitals-left",
+          layout: "qwerty",
+          wpm: 39,
+          acc: 99,
+          perKey: {},
+          ts: 1,
+        },
+      ],
+    });
+    expect(currentLesson()).toBe(12);
   });
 
   it("upgrades v1 key stats on import", () => {

@@ -7,6 +7,7 @@ import { configEvent } from "../events/config";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { keycodeToLayoutKey } from "../utils/key-converter";
 import { resolveLayoutName } from "../utils/layout-name";
+import { keycodeToFinger } from "./finger";
 import { KeySample } from "./key-stats";
 
 export type CharClass = "digit";
@@ -65,6 +66,13 @@ const letterKeys: Keycode[] = [
   "KeyZ",
 ];
 
+const leftLetterKeys = letterKeys.filter((key) =>
+  keycodeToFinger[key]?.startsWith("L"),
+);
+const rightLetterKeys = letterKeys.filter((key) =>
+  keycodeToFinger[key]?.startsWith("R"),
+);
+
 export const LESSONS: Lesson[] = [
   {
     id: "home-row",
@@ -91,11 +99,29 @@ export const LESSONS: Lesson[] = [
   { id: "b-n", name: "b n", newKeys: ["KeyB", "KeyN"] },
   { id: "x-period", name: "x .", newKeys: ["KeyX", "Period"] },
   { id: "z-slash", name: "z /", newKeys: ["KeyZ", "Slash"] },
-  { id: "capitals", name: "capitals", newKeys: letterKeys, layer: 1 },
   {
-    id: "punctuation",
-    name: "punctuation",
-    newKeys: ["Quote", "Minus", "Equal", "BracketLeft", "BracketRight"],
+    id: "capitals-left",
+    name: "capitals left",
+    newKeys: leftLetterKeys,
+    layer: 1,
+  },
+  {
+    id: "capitals-right",
+    name: "capitals right",
+    newKeys: rightLetterKeys,
+    layer: 1,
+  },
+  { id: "quote-minus", name: "' -", newKeys: ["Quote", "Minus"] },
+  {
+    id: "equal-brackets",
+    name: "= [ ]",
+    newKeys: ["Equal", "BracketLeft", "BracketRight"],
+  },
+  {
+    id: "shifted-punctuation",
+    name: "shifted punctuation",
+    newKeys: ["Comma", "Period", "Slash", "Semicolon", "Quote", "Minus"],
+    layer: 1,
   },
   {
     id: "numbers",
@@ -120,6 +146,32 @@ export const LESSONS: Lesson[] = [
 export function lessonIndex(id: string): number {
   return LESSONS.findIndex((lesson) => lesson.id === id);
 }
+
+// the lesson list as progress v2 knew it, frozen so old indices still resolve
+export const LESSON_IDS_V2: readonly string[] = [
+  "home-row",
+  "e-i",
+  "r-u",
+  "t-y",
+  "g-h",
+  "w-o",
+  "q-p",
+  "v-m",
+  "c-comma",
+  "b-n",
+  "x-period",
+  "z-slash",
+  "capitals",
+  "punctuation",
+  "numbers",
+];
+
+const renamedIds: Record<string, string> = {
+  capitals: "capitals-left",
+  punctuation: "quote-minus",
+};
+
+const currentId = (id: string): string => renamedIds[id] ?? id;
 
 export type LessonChars = { allowed: string[]; fresh: string[] };
 
@@ -407,18 +459,32 @@ const AttemptSchema = z.object({
 export type Attempt = z.infer<typeof AttemptSchema>;
 
 const LayoutProgressSchema = z.object({
-  current: z.number().int().nonnegative(),
-  unlocked: z.number().int().nonnegative(),
+  current: z.string(),
+  unlocked: z.string(),
   best: z.record(z.string(), z.number().nonnegative()),
 });
 export type LayoutProgress = z.infer<typeof LayoutProgressSchema>;
 
 export const ProgressSchema = z.object({
-  version: z.literal(2),
+  version: z.literal(3),
   layouts: z.record(z.string(), LayoutProgressSchema),
   attempts: z.array(AttemptSchema),
 });
 export type Progress = z.infer<typeof ProgressSchema>;
+
+export const ProgressV2Schema = z.object({
+  version: z.literal(2),
+  layouts: z.record(
+    z.string(),
+    z.object({
+      current: z.number().int().nonnegative(),
+      unlocked: z.number().int().nonnegative(),
+      best: z.record(z.string(), z.number().nonnegative()),
+    }),
+  ),
+  attempts: z.array(AttemptSchema),
+});
+export type ProgressV2 = z.infer<typeof ProgressV2Schema>;
 
 export const ProgressV1Schema = z.object({
   version: z.literal(1),
@@ -440,13 +506,15 @@ const maxAttempts = 1000;
 const maxAttemptsPerLesson = 50;
 const v1Layout = "qwerty";
 
+const firstLessonId = (): string => (LESSONS[0] as Lesson).id;
+
 const emptyLayoutProgress = (): LayoutProgress => ({
-  current: 0,
-  unlocked: 0,
+  current: firstLessonId(),
+  unlocked: firstLessonId(),
   best: {},
 });
 const emptyProgress = (): Progress => ({
-  version: 2,
+  version: 3,
   layouts: {},
   attempts: [],
 });
@@ -506,10 +574,10 @@ function bestByLesson(
   return best;
 }
 
-export function upgradeProgress(v1: ProgressV1): Progress {
+function upgradeV1(v1: ProgressV1): ProgressV2 {
   const attempts: Attempt[] = [];
   for (const { lesson, ...rest } of v1.attempts) {
-    const id = LESSONS[lesson]?.id;
+    const id = LESSON_IDS_V2[lesson];
     if (id === undefined) continue;
     attempts.push({ ...rest, lesson: id, layout: v1Layout });
   }
@@ -523,6 +591,44 @@ export function upgradeProgress(v1: ProgressV1): Progress {
       },
     },
     attempts,
+  };
+}
+
+function renameBest(best: Record<string, number>): Record<string, number> {
+  const renamed: Record<string, number> = {};
+  for (const [id, wpm] of Object.entries(best)) {
+    const known = renamed[currentId(id)];
+    renamed[currentId(id)] = known === undefined ? wpm : Math.max(known, wpm);
+  }
+  return renamed;
+}
+
+// an index beyond the v2 list means the lesson list already moved on
+function v2IndexToId(index: number): string {
+  return currentId(LESSON_IDS_V2[index] ?? LESSON_IDS_V2[0] ?? firstLessonId());
+}
+
+/**
+ * v1 kept indices under a single layout, v2 kept indices per layout, v3 keeps
+ * ids so inserting or splitting a lesson never moves anyone's unlocked lesson.
+ */
+export function upgradeProgress(stored: ProgressV1 | ProgressV2): Progress {
+  const v2 = stored.version === 1 ? upgradeV1(stored) : stored;
+  const layouts: Progress["layouts"] = {};
+  for (const [layout, entry] of Object.entries(v2.layouts)) {
+    layouts[layout] = {
+      current: v2IndexToId(entry.current),
+      unlocked: v2IndexToId(entry.unlocked),
+      best: renameBest(entry.best),
+    };
+  }
+  return {
+    version: 3,
+    layouts,
+    attempts: v2.attempts.map((attempt) => ({
+      ...attempt,
+      lesson: currentId(attempt.lesson),
+    })),
   };
 }
 
@@ -679,8 +785,8 @@ const [progress, setProgress] = useLocalStorage<Progress>({
   schema: ProgressSchema,
   fallback: emptyProgress(),
   migrate: (value) => {
-    const v1 = ProgressV1Schema.safeParse(value);
-    return v1.success ? upgradeProgress(v1.data) : emptyProgress();
+    const old = z.union([ProgressV1Schema, ProgressV2Schema]).safeParse(value);
+    return old.success ? upgradeProgress(old.data) : emptyProgress();
   },
 });
 
@@ -694,12 +800,17 @@ function layoutEntry(layout: string): LayoutProgress {
   return progress().layouts[layout] ?? emptyLayoutProgress();
 }
 
+// an id the list no longer knows falls back to the first lesson
+function indexOf(id: string): number {
+  return Math.max(0, lessonIndex(id));
+}
+
 export function currentLesson(): number {
-  return layoutEntry(progressLayout()).current;
+  return indexOf(layoutEntry(progressLayout()).current);
 }
 
 export function unlockedUpTo(): number {
-  return layoutEntry(progressLayout()).unlocked;
+  return indexOf(layoutEntry(progressLayout()).unlocked);
 }
 
 export function bestOf(id: string): number | undefined {
@@ -721,17 +832,17 @@ function updateLayout(
 function unlockedAfterSync(
   attempts: Attempt[],
   layout: string,
-  unlocked: number,
+  unlocked: string,
   criteria: UnlockCriteria,
-): number {
-  let next = unlocked;
+): string {
+  let next = indexOf(unlocked);
   while (
     next + 1 < LESSONS.length &&
     unlockStatus(attempts, (LESSONS[next] as Lesson).id, layout, criteria).ok
   ) {
     next++;
   }
-  return next;
+  return (LESSONS[next] as Lesson).id;
 }
 
 /**
@@ -769,9 +880,11 @@ configEvent.subscribe(({ key }) => {
 });
 
 export function setCurrentLesson(index: number): void {
+  const id = LESSONS[index]?.id;
+  if (id === undefined) return;
   setProgress((current) =>
     updateLayout(current, progressLayout(), (entry) =>
-      entry.current === index ? entry : { ...entry, current: index },
+      entry.current === id ? entry : { ...entry, current: id },
     ),
   );
 }
@@ -788,9 +901,10 @@ export function recordAttempt(attempt: Attempt): boolean {
     const attempts = trimAttempts([...current.attempts, attempt]);
     const next = index + 1;
     return updateLayout({ ...current, attempts }, attempt.layout, (entry) => {
+      const following = LESSONS[next];
       unlockedNow =
-        next < LESSONS.length &&
-        entry.unlocked < next &&
+        following !== undefined &&
+        indexOf(entry.unlocked) < next &&
         unlockStatus(
           attempts,
           attempt.lesson,
@@ -800,7 +914,10 @@ export function recordAttempt(attempt: Attempt): boolean {
       const known = entry.best[attempt.lesson];
       return {
         ...entry,
-        unlocked: unlockedNow ? next : entry.unlocked,
+        unlocked:
+          unlockedNow && following !== undefined
+            ? following.id
+            : entry.unlocked,
         best: {
           ...entry.best,
           [attempt.lesson]:

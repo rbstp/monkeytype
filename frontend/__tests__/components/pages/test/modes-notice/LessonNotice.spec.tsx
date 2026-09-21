@@ -41,7 +41,7 @@ const qwerty = readLayout("qwerty");
 const dvorak = readLayout("dvorak");
 
 function stored(layouts: Progress["layouts"]): Progress {
-  return { version: 2, layouts, attempts: [] };
+  return { version: 3, layouts, attempts: [] };
 }
 
 describe("LessonNotice", () => {
@@ -78,14 +78,20 @@ describe("LessonNotice", () => {
     render(() => <LessonNotice />);
     expect(screen.getByRole("button")).toHaveTextContent("lesson 3: p g");
     setActiveLesson(12);
-    expect(screen.getByRole("button")).toHaveTextContent("lesson 13: capitals");
+    expect(screen.getByRole("button")).toHaveTextContent(
+      "lesson 13: capitals left",
+    );
   });
 
   it("reads best from the active lesson only", () => {
     setActiveLesson(2);
     replaceProgress(
       stored({
-        qwerty: { current: 2, unlocked: 2, best: { "e-i": 55, "r-u": 31.6 } },
+        qwerty: {
+          current: "r-u",
+          unlocked: "r-u",
+          best: { "e-i": 55, "r-u": 31.6 },
+        },
       }),
     );
     render(() => <LessonNotice />);
@@ -98,8 +104,8 @@ describe("LessonNotice", () => {
     setActiveLesson(2);
     replaceProgress(
       stored({
-        qwerty: { current: 2, unlocked: 2, best: { "r-u": 31.6 } },
-        dvorak: { current: 2, unlocked: 2, best: { "r-u": 45 } },
+        qwerty: { current: "r-u", unlocked: "r-u", best: { "r-u": 31.6 } },
+        dvorak: { current: "r-u", unlocked: "r-u", best: { "r-u": 45 } },
       }),
     );
     render(() => <LessonNotice />);

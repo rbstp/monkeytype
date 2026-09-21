@@ -65,8 +65,14 @@ function attempt(overrides: Partial<Attempt> = {}): Attempt {
 
 function stored(attempts: Attempt[], unlocked = 1): Progress {
   return {
-    version: 2,
-    layouts: { qwerty: { current: 1, unlocked, best: {} } },
+    version: 3,
+    layouts: {
+      qwerty: {
+        current: "e-i",
+        unlocked: LESSONS[unlocked]?.id ?? "",
+        best: {},
+      },
+    },
     attempts,
   };
 }

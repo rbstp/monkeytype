@@ -16,11 +16,11 @@ Gaps:
 
 - The chip at LessonNotice.tsx names the active lesson, its best and the target on the test screen; the result card at LessonResultCard.tsx prints the shortfall or the unlock with retry and next. The unlock toast in trainer/index.ts stays.
 - Key stats v2 keeps speed apart from errors: emaMs takes only correct, non-recovery samples with pauses capped at three times the average, errRate is its own moving average, and deletes advance the clock. Shift is still folded into the base key in key-stats.ts. Panel and tips label keys slow or error-prone.
-- Unlocks read the configured floor through criteriaFor and, since the mastery gate, `masteryOf` in lessons.ts pools perKey over the last three attempts: a new key needs its share of a 60-sample budget (20 for a two-key lesson, 3 for capitals) and at most 3% errors before `unlockStatus` says ok. The result card prints the first shortfall.
+- Unlocks read the configured floor through criteriaFor and, since the mastery gate, `masteryOf` in lessons.ts pools perKey over the last three attempts: a new key needs its share of a 60-sample budget (20 for a two-key lesson, 4 for capitals left, 6 for capitals right) and at most 3% errors before `unlockStatus` says ok. The result card prints the first shortfall.
 - Early lessons read real words since the adaptive-words slice: `largestCorpus` in session.ts loads english_10k, `buildLessonWords` draws by damped rank when the corpus is ordered by frequency and never mutates a real word. The 120-word pool is still built once per startLesson; weak-key weighting and mid-lesson rebuilds are build-order step 17.
 - Lesson names follow the layout since layout-aware-curriculum: `lessonName` in lessons.ts joins the fresh legends for the lessons whose name is their qwerty legends and keeps the fixed names, `lessonKeyLegend` resolves the numbers through `layer: "auto"`, and every surface (page, chip, card, indicator, toast, commandline) reads it. "default" resolves through keymapLayout in utils/layout-name.ts, and progress is per layout since Progress v2: `progressLayout()` in lessons.ts names the entry that `currentLesson()`, `unlockedUpTo()` and `bestOf()` read.
 - Config leaks, closed by foundations A: lifecycle.ts sets the store before it fires the finished event, the persisted config hook in session.ts keeps lesson values out of the saved config, and index.ts scores an attempt only when isLessonText accepts the target words.
-- Progress v2 migrates v1 through the localStorage hook and on backup import, keeps 1000 attempts with at most 50 per lesson and layout, and stores a best per lesson so trimming never evicts one. Key stats do the same since key stats v2. The backup travels as a file: `exportBackupFile` and `importBackupFile` in trainer/actions.ts, wired to the trainer page header and the two commandline commands.
+- Progress v3 keeps lesson ids for current and unlocked, so a split or an inserted lesson never moves an unlocked position; v1 and v2 migrate through the localStorage hook and on backup import. Progress keeps 1000 attempts with at most 50 per lesson and layout, and stores a best per lesson so trimming never evicts one. Key stats do the same since key stats v2. The backup travels as a file: `exportBackupFile` and `importBackupFile` in trainer/actions.ts, wired to the trainer page header and the two commandline commands.
 
 ## Expansion ideas
 
@@ -131,7 +131,7 @@ After lesson 12: capitals by hand, three punctuation steps, a space drill, then 
 
 Splitting the capitals lesson shifts indices, so this needs id-based progress from foundations C. The French track needs a dead-key table and a sampler that attributes an accented char to two keypresses, see the decisions doc.
 
-First slice: id-based lessons with the capitals split by hand, which is the prerequisite for any new track.
+First slice landed in `feat(trainer): curriculum-tracks, id-based progress and the capitals split`: Progress v3 stores `current` and `unlocked` as lesson ids per layout, `upgradeProgress` chains v1 to v2 to v3 over the frozen `LESSON_IDS_V2`, `currentLesson()` and `unlockedUpTo()` still return indices and send an unknown id to 0, and backup v3 accepts 1, 2 and 3. "capitals" became "capitals-left" and "capitals-right" from keycodeToFinger, "punctuation" became the ladder "quote-minus", "equal-brackets" and "shifted-punctuation"; the old ids migrate to "capitals-left" and "quote-minus" for attempts, bests and positions. No space drill, since the drill exists.
 
 Risk: the layout emulator has no dead-key state, so the French track only works on the OS layout.
 
@@ -218,7 +218,7 @@ Next, honest data and surfaces on it:
 Later, the French goal and the rest:
 
 14. layout-aware-curriculum: legend-derived names, auto layer, per-layout progress. Done in `feat(trainer): layout-aware-curriculum, legend-derived names and an auto layer`; per-layout progress had landed with step 7.
-15. curriculum-tracks: capitals by hand and the punctuation ladder, then the French accents track with a dead-key table.
+15. curriculum-tracks: capitals by hand and the punctuation ladder, then the French accents track with a dead-key table. 15a done in `feat(trainer): curriculum-tracks, id-based progress and the capitals split`.
 16. pairwise-stats: confusion pairs, then bigram transitions.
 17. adaptive-words: weak-key weighting and mid-lesson rebuilds.
 18. mastery-and-phases: speed and accuracy phases.

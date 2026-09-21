@@ -13,6 +13,7 @@ import {
   defaultCriteria,
   lessonChars,
   lessonIndex,
+  LESSON_IDS_V2,
   lessonKeyLegend,
   lessonName,
   LESSONS,
@@ -21,6 +22,7 @@ import {
   progress,
   Progress,
   ProgressV1,
+  ProgressV2,
   recordAttempt,
   replaceProgress,
   resetProgress,
@@ -64,10 +66,8 @@ function seeded(seed: number): () => number {
   };
 }
 
-const capitals = LESSONS.findIndex((lesson) => lesson.name === "capitals");
-const punctuation = LESSONS.findIndex(
-  (lesson) => lesson.name === "punctuation",
-);
+const capitals = lessonIndex("capitals-left");
+const punctuation = lessonIndex("quote-minus");
 
 function capitalised(word: string): string {
   return word.charAt(0).toUpperCase() + word.slice(1);
@@ -91,17 +91,90 @@ describe("lessons", () => {
         "b-n",
         "x-period",
         "z-slash",
-        "capitals",
-        "punctuation",
+        "capitals-left",
+        "capitals-right",
+        "quote-minus",
+        "equal-brackets",
+        "shifted-punctuation",
         "numbers",
       ]);
       for (const id of ids) expect(/^[a-z]+(-[a-z]+)*$/.test(id)).toBe(true);
     });
 
+    it("keeps the v2 list frozen", () => {
+      expect(LESSON_IDS_V2).toEqual([
+        ...LESSONS.slice(0, 12).map((lesson) => lesson.id),
+        "capitals",
+        "punctuation",
+        "numbers",
+      ]);
+    });
+
     it("resolves an id back to its index", () => {
       expect(lessonIndex("home-row")).toBe(0);
-      expect(lessonIndex("capitals")).toBe(capitals);
+      expect(lessonIndex("capitals-left")).toBe(capitals);
       expect(lessonIndex("missing")).toBe(-1);
+    });
+
+    it("splits the capitals by hand and covers every letter once", () => {
+      const left = LESSONS[capitals]?.newKeys ?? [];
+      const right = LESSONS[lessonIndex("capitals-right")]?.newKeys ?? [];
+      expect(left).toEqual([
+        "KeyA",
+        "KeyB",
+        "KeyC",
+        "KeyD",
+        "KeyE",
+        "KeyF",
+        "KeyG",
+        "KeyQ",
+        "KeyR",
+        "KeyS",
+        "KeyT",
+        "KeyV",
+        "KeyW",
+        "KeyX",
+        "KeyZ",
+      ]);
+      expect(right).toEqual([
+        "KeyH",
+        "KeyI",
+        "KeyJ",
+        "KeyK",
+        "KeyL",
+        "KeyM",
+        "KeyN",
+        "KeyO",
+        "KeyP",
+        "KeyU",
+        "KeyY",
+      ]);
+      expect([...left, ...right].sort()).toEqual(
+        [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"].map((letter) => `Key${letter}`),
+      );
+      expect(lessonChars(capitals, qwerty).fresh.join("")).toBe(
+        "ABCDEFGQRSTVWXZ",
+      );
+    });
+
+    it("lays the punctuation ladder out in three steps", () => {
+      expect(LESSONS[lessonIndex("quote-minus")]).toEqual({
+        id: "quote-minus",
+        name: "' -",
+        newKeys: ["Quote", "Minus"],
+      });
+      expect(LESSONS[lessonIndex("equal-brackets")]).toEqual({
+        id: "equal-brackets",
+        name: "= [ ]",
+        newKeys: ["Equal", "BracketLeft", "BracketRight"],
+      });
+      expect(LESSONS[lessonIndex("shifted-punctuation")]).toMatchObject({
+        newKeys: ["Comma", "Period", "Slash", "Semicolon", "Quote", "Minus"],
+        layer: 1,
+      });
+      expect(
+        lessonChars(lessonIndex("shifted-punctuation"), qwerty).fresh,
+      ).toEqual(["<", ">", "?", ":", '"', "_"]);
     });
   });
 
@@ -147,10 +220,23 @@ describe("lessons", () => {
     });
 
     it("keeps the fixed names on every layout", () => {
-      for (const id of ["capitals", "punctuation", "numbers"]) {
-        expect(named(id, qwerty)).toBe(id);
-        expect(named(id, dvorak)).toBe(id);
+      const fixed = {
+        "capitals-left": "capitals left",
+        "capitals-right": "capitals right",
+        "shifted-punctuation": "shifted punctuation",
+        numbers: "numbers",
+      };
+      for (const [id, name] of Object.entries(fixed)) {
+        expect(named(id, qwerty)).toBe(name);
+        expect(named(id, dvorak)).toBe(name);
       }
+    });
+
+    it("derives the ladder names from the legends", () => {
+      expect(named("quote-minus", qwerty)).toBe("' -");
+      expect(named("quote-minus", dvorak)).toBe("- [");
+      expect(named("equal-brackets", qwerty)).toBe("= [ ]");
+      expect(named("equal-brackets", dvorak)).toBe("] / =");
     });
 
     it("falls back to the qwerty name without a layout", () => {
@@ -321,7 +407,7 @@ describe("lessons", () => {
 
     it("capitalises real words for the capitals lesson", () => {
       const chars = lessonChars(capitals, qwerty);
-      const real = ["the", "quick", "brown", "fox", "jumps", "over", "lazy"];
+      const real = ["the", "quick", "brown", "fox", "water", "every", "grab"];
       const words = buildLessonWords(real, chars, {
         ...options,
         minReal: 4,
@@ -342,18 +428,21 @@ describe("lessons", () => {
       for (const word of real) expect(words).toContain(capitalised(word));
     });
 
-    it("covers every capital from a wide corpus", () => {
+    it("covers every capital of the hand from a wide corpus", () => {
       const real = [..."abcdefghijklmnopqrstuvwxyz"].map(
         (letter) => `${letter}ab`,
       );
-      const words = buildLessonWords(real, lessonChars(capitals, qwerty), {
-        minReal: 10,
-        random: seeded(14),
-      });
-      for (const letter of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-        expect(
-          words.filter((word) => word.startsWith(letter)).length,
-        ).toBeGreaterThanOrEqual(4);
+      for (const id of ["capitals-left", "capitals-right"]) {
+        const chars = lessonChars(lessonIndex(id), qwerty);
+        const words = buildLessonWords(real, chars, {
+          minReal: 10,
+          random: seeded(14),
+        });
+        for (const letter of chars.fresh) {
+          expect(
+            words.filter((word) => word.startsWith(letter)).length,
+          ).toBeGreaterThanOrEqual(4);
+        }
       }
     });
 
@@ -558,14 +647,17 @@ describe("lessons", () => {
       const required = (id: string): number =>
         masterySamplesFor(LESSONS[lessonIndex(id)] as (typeof LESSONS)[0]);
       expect(required("e-i")).toBe(20);
-      expect(required("punctuation")).toBe(12);
+      expect(required("quote-minus")).toBe(20);
+      expect(required("equal-brackets")).toBe(20);
+      expect(required("shifted-punctuation")).toBe(10);
       expect(required("home-row")).toBe(8);
       expect(required("numbers")).toBe(6);
-      expect(required("capitals")).toBe(3);
-      expect(masteryOf([], "capitals", "qwerty")["KeyQ"]).toEqual({
+      expect(required("capitals-left")).toBe(4);
+      expect(required("capitals-right")).toBe(6);
+      expect(masteryOf([], "capitals-left", "qwerty")["KeyQ"]).toEqual({
         samples: 0,
         errors: 0,
-        required: 3,
+        required: 4,
       });
     });
 
@@ -715,11 +807,11 @@ describe("lessons", () => {
         attempts: [v1Attempt(1, 25), v1Attempt(2, 60), v1Attempt(1, 31.4)],
       });
       expect(upgraded).toEqual({
-        version: 2,
+        version: 3,
         layouts: {
           qwerty: {
-            current: 2,
-            unlocked: 3,
+            current: "r-u",
+            unlocked: "t-y",
             best: { "e-i": 31.4, "r-u": 60 },
           },
         },
@@ -736,7 +828,7 @@ describe("lessons", () => {
         version: 1,
         current: 0,
         unlocked: 0,
-        attempts: [v1Attempt(LESSONS.length, 40), v1Attempt(0, 20)],
+        attempts: [v1Attempt(LESSON_IDS_V2.length, 40), v1Attempt(0, 20)],
       });
       expect(upgraded.attempts.map((attempt) => attempt.lesson)).toEqual([
         "home-row",
@@ -753,6 +845,82 @@ describe("lessons", () => {
           attempts: [v1Attempt(0, 0)],
         }).layouts["qwerty"]?.best,
       ).toEqual({ "home-row": 0 });
+    });
+
+    const v2Attempt = (
+      lesson: string,
+      wpm: number,
+      layout = "qwerty",
+    ): Attempt => ({
+      lesson,
+      layout,
+      wpm,
+      acc: 98,
+      perKey: {},
+      ts: wpm,
+    });
+
+    it("keeps the unlocked lesson by id after the capitals split", () => {
+      const v2: ProgressV2 = {
+        version: 2,
+        layouts: {
+          qwerty: { current: 12, unlocked: 13, best: { capitals: 40 } },
+          dvorak: { current: 0, unlocked: 14, best: {} },
+        },
+        attempts: [
+          v2Attempt("capitals", 40),
+          v2Attempt("numbers", 33, "dvorak"),
+        ],
+      };
+      const upgraded = upgradeProgress(v2);
+      expect(upgraded.layouts["qwerty"]).toEqual({
+        current: "capitals-left",
+        unlocked: "quote-minus",
+        best: { "capitals-left": 40 },
+      });
+      expect(upgraded.layouts["dvorak"]).toEqual({
+        current: "home-row",
+        unlocked: "numbers",
+        best: {},
+      });
+      expect(lessonIndex("quote-minus")).toBeGreaterThan(13);
+      expect(lessonIndex("numbers")).toBeGreaterThan(14);
+      expect(upgraded.attempts.map((attempt) => attempt.lesson)).toEqual([
+        "capitals-left",
+        "numbers",
+      ]);
+    });
+
+    it("maps the old ids and merges their bests", () => {
+      const upgraded = upgradeProgress({
+        version: 2,
+        layouts: {
+          qwerty: {
+            current: 13,
+            unlocked: 13,
+            best: { capitals: 40, "capitals-left": 45, punctuation: 30 },
+          },
+        },
+        attempts: [v2Attempt("punctuation", 30), v2Attempt("e-i", 50)],
+      });
+      expect(upgraded.layouts["qwerty"]?.best).toEqual({
+        "capitals-left": 45,
+        "quote-minus": 30,
+      });
+      expect(upgraded.attempts.map((attempt) => attempt.lesson)).toEqual([
+        "quote-minus",
+        "e-i",
+      ]);
+    });
+
+    it("sends an index beyond the v2 list back to the first lesson", () => {
+      expect(
+        upgradeProgress({
+          version: 2,
+          layouts: { qwerty: { current: 40, unlocked: 99, best: {} } },
+          attempts: [],
+        }).layouts["qwerty"],
+      ).toEqual({ current: "home-row", unlocked: "home-row", best: {} });
     });
   });
 
@@ -895,8 +1063,10 @@ describe("lessons", () => {
         vi.resetModules();
         const fresh = await import("../../src/ts/trainer/lessons");
         expect(fresh.progress()).toEqual({
-          version: 2,
-          layouts: { qwerty: { current: 2, unlocked: 3, best: { "e-i": 28 } } },
+          version: 3,
+          layouts: {
+            qwerty: { current: "r-u", unlocked: "t-y", best: { "e-i": 28 } },
+          },
           attempts: [
             {
               lesson: "e-i",
@@ -910,8 +1080,58 @@ describe("lessons", () => {
         });
         expect(
           JSON.parse(localStorage.getItem("trainerProgress") ?? "{}").version,
-        ).toBe(2);
+        ).toBe(3);
       });
+
+      it("upgrades a stored v2 blob on load and keeps the unlocked lesson", async () => {
+        localStorage.setItem(
+          "trainerProgress",
+          JSON.stringify({
+            version: 2,
+            layouts: {
+              qwerty: { current: 13, unlocked: 13, best: { punctuation: 31 } },
+            },
+            attempts: [],
+          }),
+        );
+        vi.resetModules();
+        const fresh = await import("../../src/ts/trainer/lessons");
+        expect(fresh.progress()).toEqual({
+          version: 3,
+          layouts: {
+            qwerty: {
+              current: "quote-minus",
+              unlocked: "quote-minus",
+              best: { "quote-minus": 31 },
+            },
+          },
+          attempts: [],
+        });
+        expect(
+          JSON.parse(localStorage.getItem("trainerProgress") ?? "{}").version,
+        ).toBe(3);
+      });
+    });
+
+    it("resolves an unknown stored id to the first lesson", () => {
+      replaceProgress({
+        version: 3,
+        layouts: { qwerty: { current: "gone", unlocked: "gone", best: {} } },
+        attempts: [],
+      });
+      expect(currentLesson()).toBe(0);
+      expect(unlockedUpTo()).toBe(0);
+      setCurrentLesson(2);
+      expect(progress().layouts["qwerty"]?.current).toBe("r-u");
+      setCurrentLesson(99);
+      expect(progress().layouts["qwerty"]?.current).toBe("r-u");
+    });
+
+    it("stores the unlocked lesson as an id", () => {
+      expect(recordAttempt(attempt("home-row", "qwerty", 40))).toBe(true);
+      expect(progress().layouts["qwerty"]?.unlocked).toBe("e-i");
+      expect(recordAttempt(attempt("home-row", "qwerty", 40))).toBe(false);
+      expect(progress().layouts["qwerty"]?.unlocked).toBe("e-i");
     });
 
     it("stores an attempt that passes the floors but not mastery without unlocking", () => {
@@ -925,7 +1145,7 @@ describe("lessons", () => {
 
     it("re-evaluates unlocks per layout on replace", () => {
       const data: Progress = {
-        version: 2,
+        version: 3,
         layouts: {},
         attempts: [
           attempt("home-row", "qwerty", 40),
@@ -934,8 +1154,8 @@ describe("lessons", () => {
         ],
       };
       replaceProgress(data);
-      expect(progress().layouts["qwerty"]?.unlocked).toBe(2);
-      expect(progress().layouts["dvorak"]?.unlocked).toBe(1);
+      expect(progress().layouts["qwerty"]?.unlocked).toBe("r-u");
+      expect(progress().layouts["dvorak"]?.unlocked).toBe("e-i");
     });
   });
 });

@@ -10,18 +10,22 @@ import {
   progress,
   ProgressSchema,
   ProgressV1Schema,
+  ProgressV2Schema,
   replaceProgress,
   upgradeProgress,
 } from "./lessons";
 
 export const BackupSchema = z.object({
-  version: z.union([z.literal(1), z.literal(2)]).transform(() => 2 as const),
+  version: z
+    .union([z.literal(1), z.literal(2), z.literal(3)])
+    .transform(() => 3 as const),
   keyStats: z.union([
     KeyStatsSchema,
     KeyStatsV1Schema.transform(upgradeKeyStats),
   ]),
   progress: z.union([
     ProgressSchema,
+    ProgressV2Schema.transform(upgradeProgress),
     ProgressV1Schema.transform(upgradeProgress),
   ]),
 });
@@ -29,7 +33,7 @@ export type Backup = z.infer<typeof BackupSchema>;
 
 export function exportBackup(): string {
   const backup: Backup = {
-    version: 2,
+    version: 3,
     keyStats: getKeyStats(),
     progress: progress(),
   };

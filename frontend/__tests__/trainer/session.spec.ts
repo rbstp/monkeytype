@@ -390,7 +390,7 @@ describe("trainer session", () => {
       ts: 0,
     });
     const stored = (attempts: Attempt[]): Progress => ({
-      version: 2 as const,
+      version: 3 as const,
       layouts: {},
       attempts,
     });
@@ -702,7 +702,7 @@ describe("trainer session", () => {
     it("toasts the unlock once every new key is mastered", async () => {
       await startLesson(0);
       replaceProgress({
-        version: 2,
+        version: 3,
         layouts: {},
         attempts: [
           {

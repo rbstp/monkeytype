@@ -45,8 +45,8 @@ describe("trainer actions", () => {
   beforeEach(() => {
     resetProgress();
     replaceProgress({
-      version: 2,
-      layouts: { qwerty: { current: 0, unlocked: 2, best: {} } },
+      version: 3,
+      layouts: { qwerty: { current: "home-row", unlocked: "r-u", best: {} } },
       attempts: [],
     });
     restartMock.mockReset().mockResolvedValue();
@@ -169,10 +169,10 @@ describe("trainer actions", () => {
       expect(data.type).toBe("application/json");
       const parsed = JSON.parse(await readBlob(data)) as {
         version: number;
-        progress: { layouts: Record<string, { current: number }> };
+        progress: { layouts: Record<string, { current: string }> };
       };
-      expect(parsed.version).toBe(2);
-      expect(parsed.progress.layouts["qwerty"]?.current).toBe(1);
+      expect(parsed.version).toBe(3);
+      expect(parsed.progress.layouts["qwerty"]?.current).toBe("e-i");
     });
 
     it("imports a json file and reports the result", async () => {

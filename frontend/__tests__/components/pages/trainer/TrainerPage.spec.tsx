@@ -116,9 +116,9 @@ describe("TrainerPage", () => {
 
   it("shows the chart and one table row per lesson once the layout has attempts", () => {
     replaceProgress({
-      version: 2,
+      version: 3,
       layouts: {
-        qwerty: { current: 1, unlocked: 1, best: { "home-row": 44.4 } },
+        qwerty: { current: "e-i", unlocked: "e-i", best: { "home-row": 44.4 } },
       },
       attempts: [
         attempt("home-row", 44.4, 99),
@@ -170,8 +170,8 @@ describe("TrainerPage", () => {
   it("names the lessons by the legends of the input layout", () => {
     vi.spyOn(TestState, "inputLayoutObject").mockReturnValue(dvorak);
     replaceProgress({
-      version: 2,
-      layouts: { dvorak: { current: 1, unlocked: 1, best: {} } },
+      version: 3,
+      layouts: { dvorak: { current: "e-i", unlocked: "e-i", best: {} } },
       attempts: [attempt("home-row", 40, 99, "dvorak")],
     });
     setConfigStore("layout", "dvorak");
@@ -180,11 +180,11 @@ describe("TrainerPage", () => {
       screen.getByRole("button", { name: /continue lesson 2: \. c/ }),
     ).toBeInTheDocument();
     expect(screen.getAllByText("a o e u h t n s")).toHaveLength(1);
-    expect(screen.getAllByText("capitals")).toHaveLength(1);
+    expect(screen.getAllByText("capitals left")).toHaveLength(1);
     const rows = screen.getAllByRole("row").slice(1);
     expect(rows[0]).toHaveTextContent("1. a o e u h t n s");
     expect(rows[1]).toHaveTextContent("2. . c");
-    expect(rows[12]).toHaveTextContent("13. capitals");
+    expect(rows[12]).toHaveTextContent("13. capitals left");
   });
 
   it("exports through the shared action", () => {
@@ -224,7 +224,7 @@ describe("TrainerPage", () => {
 
   it("hides the chart for a layout without attempts", () => {
     replaceProgress({
-      version: 2,
+      version: 3,
       layouts: {},
       attempts: [attempt("home-row", 40, 99, "dvorak")],
     });
