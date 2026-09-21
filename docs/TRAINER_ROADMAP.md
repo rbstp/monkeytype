@@ -31,9 +31,11 @@ does work`. Decisions that shaped it are in
   the layout's median. The weak-keys panel and `buildTips` show all three.
 - Unlocks read the configured floor through `criteriaFor`. `masteryOf` pools
   `perKey` over the last three attempts, so a new key needs its share of a
-  60-sample budget and at most 3% errors before `unlockStatus` says ok, and the
+  sample budget and at most 3% errors before `unlockStatus` says ok, and the
   status carries a phase: accuracy while a new key is weak, speed once mastery
   holds. The card and the chip show only what the phase asks for.
+  `masterySamplesFor` scales that budget with `trainerWordsPerTest` and caps it
+  at what three attempts can show, since the window rolls rather than adds up.
 - Lessons read real words. `largestCorpus` loads english_10k,
   `buildLessonWords` draws by damped rank when the corpus is ordered by
   frequency and never mutates a real word, the 120-word pool is weighted by
@@ -129,6 +131,9 @@ does work`. Decisions that shaped it are in
 26. hardening, calendar days. `fix(trainer): hardening, count calendar days in
     the key history`: `daysBefore` shifts a local date instead of subtracting a
     fixed day length.
+27. hardening, a reachable mastery gate. `fix(trainer): hardening, scale the
+    mastery budget with the test length`: a short test no longer asks for more
+    samples than its rolling window can hold.
 
 ## Open
 

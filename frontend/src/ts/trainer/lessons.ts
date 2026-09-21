@@ -873,6 +873,8 @@ export function trimAttempts(attempts: Attempt[]): Attempt[] {
 
 const masteryWindow = 3;
 const masterySampleBudget = 60;
+const budgetWordsPerTest = 40;
+const masteryMargin = 2 / 3;
 const maxMasterySamples = 20;
 const minMasterySamples = 3;
 export const masteryErrorRate = 0.03;
@@ -880,19 +882,33 @@ export const masteryErrorRate = 0.03;
 export type KeyMastery = { samples: number; errors: number; required: number };
 
 /**
- * Three attempts of a lesson yield about 60 fresh samples in total, so a wide
- * lesson such as capitals shares that budget across its keys instead of asking
- * 20 of each.
+ * Three attempts of a lesson yield about 60 fresh samples at the default test
+ * length, so a wide lesson such as capitals shares that budget across its keys
+ * instead of asking 20 of each. The budget follows the configured test length,
+ * since mastery pools a rolling window of three attempts rather than a running
+ * total: a short test kept against the full budget asks for more samples than
+ * the window can ever hold, and the lesson never unlocks however well it goes.
  */
 export function masterySamplesFor(
   lesson: Lesson,
   width = lesson.newKeys.length,
+  wordsPerTest = getConfig.trainerWordsPerTest,
 ): number {
-  if (width === 0) return maxMasterySamples;
-  return Math.min(
-    maxMasterySamples,
-    Math.max(minMasterySamples, Math.ceil(masterySampleBudget / width)),
+  const budget = (masterySampleBudget * wordsPerTest) / budgetWordsPerTest;
+  if (width === 0) {
+    return Math.min(
+      maxMasterySamples,
+      Math.max(minMasterySamples, Math.ceil(budget)),
+    );
+  }
+  // a pool gives each fresh character one word in `width`, so asking for the
+  // mean of a three attempt window is a coin flip per key and a wide lesson
+  // needs every key to win at once; leave a third of the window as margin
+  const reachable = Math.floor(
+    (masteryWindow * wordsPerTest * masteryMargin) / width,
   );
+  const asked = Math.max(minMasterySamples, Math.ceil(budget / width));
+  return Math.min(maxMasterySamples, asked, Math.max(1, reachable));
 }
 
 function attemptsOf(

@@ -1001,6 +1001,7 @@ describe("lessons", () => {
         lessonIndex("accents-grave")
       ] as (typeof LESSONS)[0];
       expect(masterySamplesFor(grave)).toBe(20);
+      expect(masterySamplesFor(grave, 0, 10)).toBe(15);
       expect(masterySamplesFor(grave, 1)).toBe(20);
       expect(masterySamplesFor(grave, 2)).toBe(20);
       expect(masterySamplesFor(grave, 5)).toBe(12);
@@ -1009,6 +1010,37 @@ describe("lessons", () => {
         errors: 0,
         required: 4,
       });
+    });
+
+    it("reads the configured test length through masteryOf", () => {
+      const required = (): number | undefined =>
+        masteryOf([], "home-row", "qwerty")["KeyA"]?.required;
+
+      setConfigStore("trainerWordsPerTest", 40);
+      expect(required()).toBe(8);
+      setConfigStore("trainerWordsPerTest", 10);
+      expect(required()).toBe(2);
+      setConfigStore("trainerWordsPerTest", 40);
+    });
+
+    it("follows the configured test length and never outruns the window", () => {
+      const homeRow = LESSONS[lessonIndex("home-row")] as (typeof LESSONS)[0];
+      expect(homeRow.newKeys).toHaveLength(8);
+      expect(masterySamplesFor(homeRow, 8, 40)).toBe(8);
+      expect(masterySamplesFor(homeRow, 8, 10)).toBe(2);
+      expect(masterySamplesFor(homeRow, 8, 200)).toBe(20);
+
+      // mastery pools three attempts, so a requirement above what three
+      // attempts can show never resolves however well they go
+      for (const lesson of LESSONS) {
+        const width = lesson.newKeys.length;
+        if (width === 0) continue;
+        for (const wordsPerTest of [10, 20, 40, 100, 200]) {
+          const required = masterySamplesFor(lesson, width, wordsPerTest);
+          expect(required).toBeGreaterThanOrEqual(1);
+          expect(required).toBeLessThanOrEqual((3 * wordsPerTest) / width);
+        }
+      }
     });
 
     it("reads the keys of a track from its attempts", () => {
