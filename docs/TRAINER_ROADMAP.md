@@ -83,11 +83,15 @@ does work`. Decisions that shaped it are in
   back. It walks the attempts from the first lesson through `unlockStatus` and
   keeps the unreadable id when they earn nothing, so a hand-edited or stale id
   is repaired to what was earned rather than reset to lesson 1. A pointer that
-  resolves is still walked forward only.
+  resolves is still walked forward only. `syncUnlocked` runs on every
+  `fullConfigChangeFinished`, on every unlock change and on a backup import, so
+  it collects only the writes that replaced an unreadable id and says once per
+  page load which layout and lesson the pointer landed on.
 - The trainer page shows the lesson map, a continue button, an attempts chart
-  against the configured floors, a per-lesson table and the key changes from
-  `keyDeltas`, which reads a cutoff `daysBefore` counts in calendar days.
-  `heatColors` tints the keymap's border ring by speed or errors.
+  against the configured floors and named for the layout `progressLayout`
+  resolves, a per-lesson table and the key changes from `keyDeltas`, which
+  reads a cutoff `daysBefore` counts in calendar days. `heatColors` tints the
+  keymap's border ring by speed or errors.
 
 ## Done
 
@@ -178,6 +182,11 @@ does work`. Decisions that shaped it are in
     the blocker on the test chip`: the chip drops the phase floor it was
     guessing and reads `unlockBlocker`, so the card, the map, the picker and
     the chip say one thing.
+
+33. legibility, say where you are. `feat(trainer): legibility, name the layout
+    and the repaired unlock`: the attempts chart names the layout it is drawn
+    from, and a pointer rebuilt from the attempts says so once per page load
+    instead of changing the map in silence.
 
 ## Open
 

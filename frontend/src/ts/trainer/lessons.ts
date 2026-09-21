@@ -5,6 +5,7 @@ import { Config, getConfig } from "../config/store";
 import { Keycode, qwertyKeycodeKeymap } from "../constants/keys";
 import { configEvent } from "../events/config";
 import { useLocalStorage } from "../hooks/useLocalStorage";
+import { showNoticeNotification } from "../states/notifications";
 import { findLayoutKey, keycodeToLayoutKey } from "../utils/key-converter";
 import { resolveLayoutName } from "../utils/layout-name";
 import { deadKeyFor, hasDeadKeys } from "./dead-keys";
@@ -1214,6 +1215,23 @@ function unlockedAfterSync(
   return earned === 0 ? unlocked : (LESSONS[earned] as Lesson).id;
 }
 
+type UnlockRepair = { layout: string; unlocked: string };
+
+let repairAnnounced = false;
+
+function announceRepairs(repairs: UnlockRepair[]): void {
+  if (repairAnnounced || repairs.length === 0) return;
+  repairAnnounced = true;
+  const lines = repairs.map(
+    ({ layout, unlocked }) =>
+      `${layout.replace(/_/g, " ")} through lesson ${lessonNumber(indexOrFirst(unlocked), layout)}`,
+  );
+  showNoticeNotification(
+    `Trainer: an unreadable unlock was rebuilt from your attempts, ${lines.join(", ")}.`,
+    { durationMs: 8000 },
+  );
+}
+
 /**
  * Re-evaluates the stored attempts against the current criteria, so a change to
  * the criteria applies to lessons already practised instead of only to the next
@@ -1221,6 +1239,7 @@ function unlockedAfterSync(
  */
 function syncUnlocked(): void {
   const criteria = criteriaFor(Config.trainerUnlock);
+  const repairs: UnlockRepair[] = [];
   setProgress((current) => {
     const layouts = new Set([
       ...Object.keys(current.layouts),
@@ -1235,11 +1254,17 @@ function syncUnlocked(): void {
           entry.unlocked,
           criteria,
         );
-        return unlocked === entry.unlocked ? entry : { ...entry, unlocked };
+        if (unlocked === entry.unlocked) return entry;
+        // walking a pointer the list still resolves is ordinary progress
+        if (lessonIndex(entry.unlocked) === -1) {
+          repairs.push({ layout, unlocked });
+        }
+        return { ...entry, unlocked };
       });
     }
     return next;
   });
+  announceRepairs(repairs);
 }
 
 configEvent.subscribe(({ key }) => {
@@ -1301,6 +1326,8 @@ export function recordAttempt(attempt: Attempt): boolean {
 
 export function resetProgress(): void {
   setProgress(emptyProgress());
+  // a later repair is a new one, not the one already reported
+  repairAnnounced = false;
 }
 
 export function replaceProgress(data: Progress): void {

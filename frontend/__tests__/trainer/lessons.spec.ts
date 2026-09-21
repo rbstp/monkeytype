@@ -1,7 +1,16 @@
 import { readFileSync } from "fs";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  MockInstance,
+  vi,
+} from "vitest";
 import { LayoutObject } from "@monkeytype/schemas/layouts";
 import { setConfigStore } from "../../src/ts/config/store";
+import * as Notifications from "../../src/ts/states/notifications";
 import {
   Attempt,
   bestOf,
@@ -1906,6 +1915,114 @@ describe("lessons", () => {
       expect(progress().layouts["qwerty"]?.unlocked).toBe("gone");
       expect(recordAttempt(attempt("home-row", "qwerty", 40))).toBe(true);
       expect(progress().layouts["qwerty"]?.unlocked).toBe("e-i");
+    });
+
+    describe("the repair notice", () => {
+      let noticeMock: MockInstance<typeof Notifications.showNoticeNotification>;
+
+      beforeEach(() => {
+        noticeMock = vi
+          .spyOn(Notifications, "showNoticeNotification")
+          .mockReturnValue(0);
+      });
+
+      afterEach(() => {
+        vi.restoreAllMocks();
+      });
+
+      it("names the lesson a rebuilt pointer landed on", () => {
+        replaceProgress({
+          version: 3,
+          layouts: {
+            qwerty: { current: "home-row", unlocked: "gone", best: {} },
+          },
+          attempts: [
+            attempt("home-row", "qwerty", 40),
+            attempt("e-i", "qwerty", 40),
+          ],
+        });
+        expect(noticeMock).toHaveBeenCalledTimes(1);
+        expect(noticeMock).toHaveBeenCalledWith(
+          "Trainer: an unreadable unlock was rebuilt from your attempts, qwerty through lesson 3.",
+          { durationMs: 8000 },
+        );
+      });
+
+      it("writes the layout with underscores as spaces", () => {
+        replaceProgress({
+          version: 3,
+          layouts: {
+            canadian_french: {
+              current: "home-row",
+              unlocked: "gone",
+              best: {},
+            },
+          },
+          attempts: [attempt("home-row", "canadian_french", 40)],
+        });
+        expect(noticeMock).toHaveBeenCalledWith(
+          "Trainer: an unreadable unlock was rebuilt from your attempts, canadian french through lesson 2.",
+          { durationMs: 8000 },
+        );
+      });
+
+      it("names every layout it repaired in one notice", () => {
+        replaceProgress({
+          version: 3,
+          layouts: {
+            qwerty: { current: "home-row", unlocked: "gone", best: {} },
+            dvorak: { current: "home-row", unlocked: "vanished", best: {} },
+          },
+          attempts: [
+            attempt("home-row", "qwerty", 40),
+            attempt("e-i", "qwerty", 40),
+            attempt("home-row", "dvorak", 40),
+          ],
+        });
+        expect(noticeMock).toHaveBeenCalledTimes(1);
+        expect(noticeMock).toHaveBeenCalledWith(
+          "Trainer: an unreadable unlock was rebuilt from your attempts, qwerty through lesson 3, dvorak through lesson 2.",
+          { durationMs: 8000 },
+        );
+      });
+
+      it("says nothing for a pointer merely walked forward", () => {
+        replaceProgress({
+          version: 3,
+          layouts: {
+            qwerty: { current: "home-row", unlocked: "home-row", best: {} },
+          },
+          attempts: [attempt("home-row", "qwerty", 40)],
+        });
+        expect(progress().layouts["qwerty"]?.unlocked).toBe("e-i");
+        expect(noticeMock).not.toHaveBeenCalled();
+      });
+
+      it("says nothing when an unreadable pointer is left alone", () => {
+        replaceProgress({
+          version: 3,
+          layouts: {
+            qwerty: { current: "home-row", unlocked: "gone", best: {} },
+          },
+          attempts: [],
+        });
+        expect(progress().layouts["qwerty"]?.unlocked).toBe("gone");
+        expect(noticeMock).not.toHaveBeenCalled();
+      });
+
+      it("announces the same repair once per load", () => {
+        const data: Progress = {
+          version: 3,
+          layouts: {
+            qwerty: { current: "home-row", unlocked: "gone", best: {} },
+          },
+          attempts: [attempt("home-row", "qwerty", 40)],
+        };
+        replaceProgress(data);
+        replaceProgress(data);
+        expect(progress().layouts["qwerty"]?.unlocked).toBe("e-i");
+        expect(noticeMock).toHaveBeenCalledTimes(1);
+      });
     });
 
     it("re-evaluates unlocks per layout on replace", () => {
