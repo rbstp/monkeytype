@@ -42,6 +42,7 @@ import {
   getActiveLesson,
   isSessionActive,
   largestCorpus,
+  rebuildLessonWords,
   startLesson,
   startSession,
   stopLesson,
@@ -205,7 +206,7 @@ describe("trainer session", () => {
       expect(buildSpy).toHaveBeenLastCalledWith(
         expect.any(Array),
         expect.anything(),
-        { orderedByFrequency: true },
+        expect.objectContaining({ orderedByFrequency: true }),
       );
       expect(CustomText.getText()).toHaveLength(120);
 
@@ -213,7 +214,7 @@ describe("trainer session", () => {
       expect(buildSpy).toHaveBeenLastCalledWith(
         expect.any(Array),
         expect.anything(),
-        { orderedByFrequency: false },
+        expect.objectContaining({ orderedByFrequency: false }),
       );
       buildSpy.mockRestore();
     });
@@ -488,6 +489,94 @@ describe("trainer session", () => {
         trainerUnlock: "relaxed",
       });
       expect(unlockedUpTo()).toBe(1);
+    });
+  });
+
+  describe("rebuildLessonWords", () => {
+    const heavy = (): void =>
+      recordSamples(
+        "qwerty",
+        Array.from({ length: 30 }, () => ({
+          keycode: "KeyK" as const,
+          shifted: false,
+          correct: false,
+        })),
+      );
+
+    it("weights the pool by the current key stats", async () => {
+      const buildSpy = vi.spyOn(Lessons, "buildLessonWords");
+      heavy();
+      expect(await startLesson(0)).toBe(true);
+      expect(buildSpy).toHaveBeenLastCalledWith(
+        expect.any(Array),
+        expect.anything(),
+        expect.objectContaining({ weights: expect.objectContaining({ k: 6 }) }),
+      );
+      buildSpy.mockRestore();
+    });
+
+    it("replaces the pool of the active lesson while no test runs", async () => {
+      await startLesson(0);
+      const before = CustomText.getText();
+      heavy();
+      expect(await rebuildLessonWords()).toBe(true);
+      const after = CustomText.getText();
+      expect(after).toHaveLength(120);
+      expect(after).not.toEqual(before);
+      expect(CustomText.getLimitMode()).toBe("word");
+      expect(getActiveLesson()).toBe(0);
+    });
+
+    it("does nothing while a test is active", async () => {
+      await startLesson(0);
+      const before = CustomText.getText();
+      TestState.setTestActive(true);
+      expect(await rebuildLessonWords()).toBe(false);
+      TestState.setTestActive(false);
+      expect(CustomText.getText()).toEqual(before);
+    });
+
+    it("never touches a drill or an idle session", async () => {
+      expect(await rebuildLessonWords()).toBe(false);
+      expect(CustomText.getText()).toEqual(["before"]);
+      await startSession({
+        words: ["as"],
+        indicator: "drill",
+        limit: { mode: "time", value: 30 },
+        drill: { keys: ["KeyA"], before: {} },
+      });
+      expect(await rebuildLessonWords()).toBe(false);
+      expect(CustomText.getText()).toEqual(["as"]);
+    });
+
+    it("rebuilds after a finished lesson test on the test page", async () => {
+      const pageMock = vi.spyOn(Core, "getActivePage").mockReturnValue("test");
+      await startLesson(0);
+      const before = CustomText.getText();
+      heavy();
+      finished(["as ", "sad "]);
+      await flush();
+      await flush();
+      expect(CustomText.getText()).not.toEqual(before);
+      pageMock.mockRestore();
+    });
+
+    it("leaves the pool alone away from the test page and without a lesson", async () => {
+      const pageMock = vi
+        .spyOn(Core, "getActivePage")
+        .mockReturnValue("settings");
+      await startLesson(0);
+      const before = CustomText.getText();
+      heavy();
+      finished(["as ", "sad "]);
+      await flush();
+      await flush();
+      expect(CustomText.getText()).toEqual(before);
+      pageMock.mockRestore();
+      stopLesson();
+      finished(["hello "]);
+      await flush();
+      expect(CustomText.getText()).toEqual(["before"]);
     });
   });
 

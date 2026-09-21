@@ -488,6 +488,74 @@ describe("lessons", () => {
       });
     });
 
+    describe("weights", () => {
+      const chars = lessonChars(0, qwerty);
+      const real = [
+        "as",
+        "ad",
+        "sad",
+        "lad",
+        "fall",
+        "all",
+        "ask",
+        "dad",
+        "lass",
+        "flask",
+      ];
+      const count = (words: string[], char: string): number =>
+        words.filter((word) => word.includes(char)).length;
+
+      it("draws words with heavy characters more often", () => {
+        const plain = buildLessonWords(real, chars, {
+          count: 600,
+          minReal: 5,
+          random: seeded(41),
+        });
+        const heavy = buildLessonWords(real, chars, {
+          count: 600,
+          minReal: 5,
+          random: seeded(41),
+          weights: { k: 6, f: 6 },
+        });
+        expect(count(heavy, "k")).toBeGreaterThan(count(plain, "k") * 1.5);
+        expect(count(heavy, "f")).toBeGreaterThan(count(plain, "f") * 1.5);
+      });
+
+      it("weighs an ordered corpus on top of its rank", () => {
+        const heavy = buildLessonWords(real, chars, {
+          count: 600,
+          minReal: 5,
+          random: seeded(42),
+          orderedByFrequency: true,
+          weights: { k: 6 },
+        });
+        const plain = buildLessonWords(real, chars, {
+          count: 600,
+          minReal: 5,
+          random: seeded(42),
+          orderedByFrequency: true,
+        });
+        expect(count(heavy, "k")).toBeGreaterThan(count(plain, "k") * 1.5);
+        expect(count(plain, "a")).toBeGreaterThan(count(plain, "k"));
+      });
+
+      it("leaves the draw untouched without weights", () => {
+        const base = buildLessonWords(real, chars, {
+          count: 60,
+          minReal: 5,
+          random: seeded(43),
+        });
+        expect(
+          buildLessonWords(real, chars, {
+            count: 60,
+            minReal: 5,
+            random: seeded(43),
+            weights: {},
+          }),
+        ).toEqual(base);
+      });
+    });
+
     it("resamples a real word with a fresh character instead of mutating one", () => {
       const chars = lessonChars(1, qwerty);
       const real = ["as", "ad", "sad", "lad", "see", "is", "like", "idea"];

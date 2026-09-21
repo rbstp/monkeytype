@@ -1,5 +1,6 @@
 import { CompletedEvent } from "@monkeytype/schemas/results";
 import { Config } from "../config/store";
+import { getActivePage } from "../states/core";
 import {
   showNoticeNotification,
   showSuccessNotification,
@@ -28,7 +29,7 @@ import {
   progressLayout,
   recordAttempt,
 } from "./lessons";
-import { getActiveDrill, getActiveLesson } from "./session";
+import { getActiveDrill, getActiveLesson, rebuildLessonWords } from "./session";
 
 export { tracksNextKey } from "./session";
 
@@ -66,6 +67,9 @@ export function onTestFinished(test: FinishedTest): void {
       if (recordKeys) {
         recordSamples(statsName, samples);
         recordConfusions(statsName, samples);
+        if (lessonIndex !== null && getActivePage() === "test") {
+          rebuildLessonWords().catch(console.error);
+        }
       }
       const drill = getActiveDrill();
       if (drill !== null && recordKeys) {

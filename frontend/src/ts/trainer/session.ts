@@ -30,7 +30,9 @@ import { __nonReactive, inputLayoutObject, isTestActive } from "../states/test";
 import * as CustomText from "../test/custom-text";
 import { areUnsortedArraysEqual } from "../utils/arrays";
 import { getLanguage } from "../utils/json-data";
+import { resolveLayoutName } from "../utils/layout-name";
 import { camelCaseToWords } from "../utils/strings";
+import { getLayoutStats, layoutStatsName } from "./key-stats";
 import {
   buildLessonWords,
   Lesson,
@@ -41,6 +43,7 @@ import {
   progressLayout,
   setCurrentLesson,
 } from "./lessons";
+import { charWeights } from "./weights";
 
 const SnapshotSchema = z.object({
   mode: ModeSchema,
@@ -238,6 +241,50 @@ function lessonIndicator(
     : `lesson ${number}: ${name} (os layout)`;
 }
 
+/**
+ * The pool for a lesson on the current layout and corpus, weighted by the
+ * current key stats so weak keys come up more often.
+ */
+async function lessonPool(index: number): Promise<string[]> {
+  const [layout, language] = await Promise.all([
+    __nonReactive.getInputLayout(),
+    loadCorpus(Config.language),
+  ]);
+  const chars = lessonChars(index, layout);
+  if (chars.fresh.length === 0) return [];
+  const stats = getLayoutStats(
+    layoutStatsName(
+      resolveLayoutName(Config.layout, Config.keymapLayout),
+      Config.funbox,
+    ),
+  );
+  return buildLessonWords(language.words, chars, {
+    orderedByFrequency: language.orderedByFrequency === true,
+    weights: charWeights(stats, layout),
+  });
+}
+
+/**
+ * Recomputes the active lesson's pool with the current stats, so the next
+ * restart chases today's weak keys. Nothing changes while a test is running
+ * or during a drill, which keeps its own builder.
+ */
+export async function rebuildLessonWords(): Promise<boolean> {
+  const index = activeLesson();
+  if (index === null || isTestActive()) return false;
+  const words = await lessonPool(index);
+  if (words.length === 0 || activeLesson() !== index || isTestActive()) {
+    return false;
+  }
+  applyCustomText({
+    text: words,
+    mode: "random",
+    limit: { mode: "word", value: Config.trainerWordsPerTest },
+    pipeDelimiter: false,
+  });
+  return true;
+}
+
 export async function startLesson(index: number): Promise<boolean> {
   const lesson = LESSONS[index];
   if (lesson === undefined) return false;
@@ -253,18 +300,12 @@ export async function startLesson(index: number): Promise<boolean> {
     return false;
   }
 
-  const [layout, language] = await Promise.all([
-    __nonReactive.getInputLayout(),
-    loadCorpus(Config.language),
-  ]);
-  const chars = lessonChars(index, layout);
-  if (chars.fresh.length === 0) {
+  const layout = await __nonReactive.getInputLayout();
+  const words = await lessonPool(index);
+  if (words.length === 0) {
     showNoticeNotification("This layout has no keys for this lesson.");
     return false;
   }
-  const words = buildLessonWords(language.words, chars, {
-    orderedByFrequency: language.orderedByFrequency === true,
-  });
   const started = await startSession({
     words,
     indicator: lessonIndicator(index, lesson, layout),

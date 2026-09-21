@@ -310,6 +310,8 @@ export type WordOptions = {
   maxLength: number;
   orderedByFrequency: boolean;
   random: () => number;
+  /** per character, 1 is neutral; a word draws by the mean of its characters */
+  weights?: Record<string, number>;
 };
 
 const defaultWordOptions: WordOptions = {
@@ -332,21 +334,30 @@ function pick<T>(items: T[], random: () => number): T | undefined {
   return items[Math.floor(random() * items.length)];
 }
 
+function meanWeight(word: string, weights: Record<string, number>): number {
+  let sum = 0;
+  for (const char of word) sum += weights[char] ?? 1;
+  return word.length === 0 ? 1 : sum / word.length;
+}
+
 /**
  * Draws from a frequency-ordered list with weight 1 / (rank + 10) ^ 0.6, so
- * common words lead without the top ten swamping the rest. An unordered list
- * draws uniformly.
+ * common words lead without the top ten swamping the rest, times the mean
+ * character weight of the word. An unordered, unweighted list draws uniformly.
  */
 function rankSampler(
   items: string[],
   ordered: boolean,
   random: () => number,
+  weights?: Record<string, number>,
 ): () => string | undefined {
-  if (!ordered) return () => pick(items, random);
+  const weighted = weights !== undefined && Object.keys(weights).length > 0;
+  if (!ordered && !weighted) return () => pick(items, random);
   const cumulative: number[] = [];
   let total = 0;
-  for (let rank = 0; rank < items.length; rank++) {
-    total += 1 / (rank + rankDamping) ** rankExponent;
+  for (const [rank, word] of items.entries()) {
+    const byRank = ordered ? 1 / (rank + rankDamping) ** rankExponent : 1;
+    total += byRank * (weighted ? meanWeight(word, weights) : 1);
     cumulative.push(total);
   }
   return () => {
@@ -451,6 +462,7 @@ export function buildLessonWords(
     real,
     options.orderedByFrequency,
     options.random,
+    options.weights,
   );
   // one real word with a rare accent would otherwise fill its whole quota
   const drawMatching = (
@@ -462,6 +474,7 @@ export function buildLessonWords(
       matching,
       options.orderedByFrequency,
       options.random,
+      options.weights,
     );
     if (!mix) return draw;
     return () =>
