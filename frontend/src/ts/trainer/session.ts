@@ -74,7 +74,10 @@ const [activeLesson, setActiveLesson] = useLocalStorage<number | null>({
   fallback: null,
 });
 
+export type DrillKind = "drill" | "warm-up" | "review";
+
 export type Drill = {
+  kind: DrillKind;
   keys: Keycode[];
   before: Partial<Record<Keycode, number>>;
 };
@@ -197,8 +200,8 @@ export type SessionOptions = {
 
 /**
  * Prepares a custom test from a word pool, snapshotting the config it
- * replaces. The caller restarts the test. A drill session never records a
- * lesson attempt, so the active lesson is cleared here.
+ * replaces. The caller restarts the test. A drill, a warm-up and a review
+ * never record a lesson attempt, so the active lesson is cleared here.
  */
 export async function startSession(options: SessionOptions): Promise<boolean> {
   if (isTestActive()) {

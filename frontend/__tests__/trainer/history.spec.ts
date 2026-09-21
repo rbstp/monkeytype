@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   dayOf,
+  daysBefore,
   getLayoutHistory,
   keyDeltas,
   LayoutHistory,
@@ -21,6 +22,45 @@ describe("history", () => {
     it("formats a local date as YYYY-MM-DD", () => {
       expect(dayOf(new Date(2026, 8, 21, 13).getTime())).toBe("2026-09-21");
       expect(dayOf(new Date(2026, 0, 5).getTime())).toBe("2026-01-05");
+    });
+  });
+
+  describe("daysBefore", () => {
+    const original = process.env.TZ;
+    beforeAll(() => {
+      process.env.TZ = "America/Toronto";
+    });
+    afterAll(() => {
+      process.env.TZ = original;
+    });
+
+    it("counts calendar days across the spring DST change", () => {
+      expect(dayOf(new Date(2026, 2, 8).getTime())).toBe("2026-03-08");
+      expect(daysBefore("2026-03-09", 1)).toBe("2026-03-08");
+      expect(daysBefore("2026-03-09", 7)).toBe("2026-03-02");
+      expect(daysBefore("2026-03-09", 90)).toBe("2025-12-09");
+    });
+
+    it("counts calendar days across the autumn DST change", () => {
+      expect(dayOf(new Date(2026, 10, 1).getTime())).toBe("2026-11-01");
+      expect(daysBefore("2026-11-02", 1)).toBe("2026-11-01");
+      expect(daysBefore("2026-11-02", 7)).toBe("2026-10-26");
+      expect(daysBefore("2026-11-02", 90)).toBe("2026-08-04");
+    });
+
+    it("counts calendar days over a month end and a leap day", () => {
+      expect(daysBefore("2026-06-10", 90)).toBe("2026-03-12");
+      expect(daysBefore("2028-03-01", 1)).toBe("2028-02-29");
+    });
+
+    it("keeps the seven day cutoff a week back across the change", () => {
+      const history: LayoutHistory = {
+        "2026-03-01": { KeyA: stat(500, 10) },
+        "2026-03-02": { KeyA: stat(400, 20) },
+      };
+      expect(keyDeltas(history, { KeyA: stat(300, 60) }, "2026-03-09")).toEqual(
+        [{ keycode: "KeyA", ms: -100, since: "2026-03-02" }],
+      );
     });
   });
 

@@ -1,10 +1,13 @@
 import { navigate } from "../../controllers/route-controller";
+import { showModal } from "../../states/modals";
 import { showSuccessNotification } from "../../states/notifications";
 import { inputLayoutObject, isTestActive } from "../../states/test";
 import * as TestLogic from "../../test/test-logic";
 import {
   beginDrill,
   beginLesson,
+  beginReview,
+  beginWarmUp,
   exportBackupFile,
   requestImport,
 } from "../../trainer/actions";
@@ -27,6 +30,7 @@ import {
   isSessionActive,
   stopLesson,
 } from "../../trainer/session";
+import { resetTransitions } from "../../trainer/transitions";
 import { Command, CommandsSubgroup } from "../types";
 
 const icon = "fa-graduation-cap";
@@ -94,12 +98,37 @@ const commands: Command[] = [
     subgroup: lessonList,
   },
   {
+    id: "trainerPick",
+    display: "Trainer: pick lesson",
+    alias: "map modal picker",
+    icon,
+    available: notDuringTest,
+    opensModal: true,
+    exec: (): void => showModal("lessonPicker"),
+  },
+  {
     id: "trainerDrill",
     display: "Trainer: drill weak keys",
     alias: "practice slow error-prone",
     icon,
     available: notDuringTest,
     exec: (): void => void beginDrill(),
+  },
+  {
+    id: "trainerWarmUp",
+    display: "Trainer: warm-up",
+    alias: "start practice unlocked keys",
+    icon,
+    available: notDuringTest,
+    exec: (): void => void beginWarmUp(),
+  },
+  {
+    id: "trainerReview",
+    display: "Trainer: review",
+    alias: "practice slipped slower keys",
+    icon,
+    available: notDuringTest,
+    exec: (): void => void beginReview(),
   },
   {
     id: "trainerStop",
@@ -137,6 +166,7 @@ const commands: Command[] = [
     exec: (): void => {
       resetKeyStats();
       resetConfusions();
+      resetTransitions();
       resetKeyHistory();
       showSuccessNotification("Key stats reset");
     },

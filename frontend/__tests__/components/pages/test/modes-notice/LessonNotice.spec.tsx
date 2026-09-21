@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LessonNotice } from "../../../../../src/ts/components/pages/test/modes-notice/LessonNotice";
 import { setConfigStore } from "../../../../../src/ts/config/store";
-import * as RouteController from "../../../../../src/ts/controllers/route-controller";
+import { isModalOpen } from "../../../../../src/ts/states/modals";
 import * as TestState from "../../../../../src/ts/states/test";
 import {
   LESSONS,
@@ -17,9 +17,6 @@ import {
 } from "../../../../../src/ts/trainer/lessons";
 import * as Session from "../../../../../src/ts/trainer/session";
 
-vi.mock("../../../../../src/ts/controllers/route-controller", () => ({
-  navigate: vi.fn(),
-}));
 vi.mock("../../../../../src/ts/trainer/session", () => ({
   getActiveLesson: vi.fn(),
 }));
@@ -46,7 +43,6 @@ function stored(layouts: Progress["layouts"]): Progress {
 
 describe("LessonNotice", () => {
   const [activeLesson, setActiveLesson] = createSignal<number | null>(null);
-  const navigateMock = vi.mocked(RouteController.navigate);
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -172,12 +168,12 @@ describe("LessonNotice", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("opens the trainer page on click", () => {
+  it("shows the lesson picker on click", () => {
     setActiveLesson(2);
     render(() => <LessonNotice />);
+    expect(isModalOpen("lessonPicker")).toBe(false);
     fireEvent.click(screen.getByRole("button"));
-    expect(navigateMock).toHaveBeenCalledTimes(1);
-    expect(navigateMock).toHaveBeenCalledWith("/trainer");
+    expect(isModalOpen("lessonPicker")).toBe(true);
   });
 
   it("renders nothing for a stored index beyond the lesson list", () => {

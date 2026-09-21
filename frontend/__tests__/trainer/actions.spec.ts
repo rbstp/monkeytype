@@ -15,6 +15,8 @@ import {
   backupFilename,
   beginDrill,
   beginLesson,
+  beginReview,
+  beginWarmUp,
   exportBackupFile,
   importBackupFile,
 } from "../../src/ts/trainer/actions";
@@ -113,6 +115,31 @@ describe("trainer actions", () => {
     expect(restartMock).toHaveBeenCalledTimes(1);
   });
 
+  it("begins a warm-up and a review through the same restart path", async () => {
+    for (const [name, begin] of [
+      ["startWarmUp", beginWarmUp],
+      ["startReview", beginReview],
+    ] as const) {
+      restartMock.mockClear();
+      navigateMock.mockClear();
+      const startMock = vi.spyOn(Drill, name).mockResolvedValue(true);
+
+      activePageMock.mockReturnValue("test");
+      expect(await begin()).toBe(true);
+      expect(startMock).toHaveBeenCalledTimes(1);
+      expect(restartMock).toHaveBeenCalledTimes(1);
+      expect(navigateMock).not.toHaveBeenCalled();
+
+      activePageMock.mockReturnValue("trainer");
+      expect(await begin()).toBe(true);
+      expect(navigateMock).toHaveBeenCalledWith("/");
+
+      startMock.mockResolvedValue(false);
+      expect(await begin()).toBe(false);
+      expect(restartMock).toHaveBeenCalledTimes(1);
+    }
+  });
+
   describe("files", () => {
     const readBlob = async (blob: Blob): Promise<string> =>
       new Promise((resolve) => {
@@ -171,7 +198,7 @@ describe("trainer actions", () => {
         version: number;
         progress: { layouts: Record<string, { current: string }> };
       };
-      expect(parsed.version).toBe(5);
+      expect(parsed.version).toBe(6);
       expect(parsed.progress.layouts["qwerty"]?.current).toBe("e-i");
     });
 

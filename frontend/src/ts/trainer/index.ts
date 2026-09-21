@@ -10,7 +10,7 @@ import { EventLog } from "../test/events/types";
 import { keycodeToLayoutKey } from "../utils/key-converter";
 import { resolveLayoutName } from "../utils/layout-name";
 import { recordConfusions } from "./confusions";
-import { drillSummary } from "./drill";
+import { drillSummary, warmUpSummary } from "./drill";
 import {
   getLayoutStats,
   layoutStatsName,
@@ -30,6 +30,7 @@ import {
   recordAttempt,
 } from "./lessons";
 import { getActiveDrill, getActiveLesson, rebuildLessonWords } from "./session";
+import { recordTransitions } from "./transitions";
 
 export { tracksNextKey } from "./session";
 
@@ -67,6 +68,7 @@ export function onTestFinished(test: FinishedTest): void {
       if (recordKeys) {
         recordSamples(statsName, samples);
         recordConfusions(statsName, samples);
+        recordTransitions(statsName, samples);
         if (lessonIndex !== null && getActivePage() === "test") {
           rebuildLessonWords().catch(console.error);
         }
@@ -74,11 +76,13 @@ export function onTestFinished(test: FinishedTest): void {
       const drill = getActiveDrill();
       if (drill !== null && recordKeys) {
         showNoticeNotification(
-          drillSummary(
-            drill,
-            getLayoutStats(statsName),
-            (keycode) => keycodeToLayoutKey(keycode, layout) ?? keycode,
-          ),
+          drill.kind === "warm-up"
+            ? warmUpSummary(test.completedEvent)
+            : drillSummary(
+                drill,
+                getLayoutStats(statsName),
+                (keycode) => keycodeToLayoutKey(keycode, layout) ?? keycode,
+              ),
           { durationMs: 8000 },
         );
       }

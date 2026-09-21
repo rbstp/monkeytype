@@ -312,6 +312,7 @@ export type WordOptions = {
   random: () => number;
   /** per character, 1 is neutral; a word draws by the mean of its characters */
   weights?: Record<string, number>;
+  bigrams?: Bigrams;
 };
 
 const defaultWordOptions: WordOptions = {
@@ -329,6 +330,120 @@ const minMatching = 3;
 
 const vowels = new Set("aeiouyàâäéèêëîïôöùûü");
 const isLetter = (char: string): boolean => /\p{L}/u.test(char);
+
+const wordEnd = "";
+const minBigrams = 50;
+
+export type Bigrams = {
+  starts: Record<string, number>;
+  /** the next letter, or wordEnd, after a letter */
+  next: Record<string, Record<string, number>>;
+  pairs: number;
+};
+
+// every word counts, not only the ones the lesson can spell, so an early
+// lesson still learns its pairs from the whole corpus
+
+export function bigramTable(words: string[], allowed: string[]): Bigrams {
+  const letters = new Set(allowed.filter(isLetter));
+  const starts: Record<string, number> = {};
+  const next: Record<string, Record<string, number>> = {};
+  let pairs = 0;
+  const add = (from: string, to: string): void => {
+    const row = (next[from] ??= {});
+    if (to !== wordEnd && row[to] === undefined) pairs++;
+    row[to] = (row[to] ?? 0) + 1;
+  };
+  for (const word of words) {
+    const chars = [...word];
+    const first = chars[0];
+    const last = chars[chars.length - 1];
+    if (first !== undefined && letters.has(first)) {
+      starts[first] = (starts[first] ?? 0) + 1;
+    }
+    if (last !== undefined && letters.has(last)) add(last, wordEnd);
+    for (let i = 1; i < chars.length; i++) {
+      const from = chars[i - 1] as string;
+      const to = chars[i] as string;
+      if (letters.has(from) && letters.has(to)) add(from, to);
+    }
+  }
+  return { starts, next, pairs };
+}
+
+function drawChar(
+  counts: Record<string, number>,
+  allowed: Set<string>,
+  fresh: Set<string>,
+  random: () => number,
+  withEnd: boolean,
+): string | undefined {
+  const entries: [string, number][] = [];
+  let total = 0;
+  for (const [char, count] of Object.entries(counts)) {
+    if (char === wordEnd ? !withEnd : !allowed.has(char)) continue;
+    const weight = count * (fresh.has(char) ? 2 : 1);
+    entries.push([char, weight]);
+    total += weight;
+  }
+  if (total === 0) return undefined;
+  let target = random() * total;
+  for (const [char, weight] of entries) {
+    target -= weight;
+    if (target < 0) return char;
+  }
+  return entries[entries.length - 1]?.[0];
+}
+
+function bigramWord(
+  letters: string[],
+  fresh: Set<string>,
+  bigrams: Bigrams,
+  length: number,
+  minLength: number,
+  random: () => number,
+): string | undefined {
+  const allowed = new Set(letters);
+  let char = drawChar(bigrams.starts, allowed, fresh, random, false);
+  if (char === undefined) return undefined;
+  let word = char;
+  while (word.length < length) {
+    const drawn = drawChar(
+      bigrams.next[char] ?? {},
+      allowed,
+      fresh,
+      random,
+      word.length >= minLength,
+    );
+    if (drawn === undefined || drawn === wordEnd) break;
+    word += drawn;
+    char = drawn;
+  }
+  return word;
+}
+
+function alternatingWord(
+  letters: string[],
+  fresh: Set<string>,
+  length: number,
+  random: () => number,
+): string {
+  const vowelPool = letters.filter((letter) => vowels.has(letter));
+  const consonantPool = letters.filter((letter) => !vowels.has(letter));
+  const alternate = vowelPool.length > 0 && consonantPool.length > 0;
+  const startWithVowel = random() < 0.5;
+
+  let word = "";
+  for (let i = 0; i < length && letters.length > 0; i++) {
+    const pool = alternate
+      ? startWithVowel === (i % 2 === 0)
+        ? vowelPool
+        : consonantPool
+      : letters;
+    word += pickWeighted(pool, fresh, random);
+  }
+  return word;
+}
 
 function pick<T>(items: T[], random: () => number): T | undefined {
   return items[Math.floor(random() * items.length)];
@@ -402,20 +517,20 @@ function pseudoWord(
       : 1 + Math.floor(options.random() * Math.min(3, length - 1))
     : 0;
 
-  const vowelPool = letters.filter((letter) => vowels.has(letter));
-  const consonantPool = letters.filter((letter) => !vowels.has(letter));
-  const alternate = vowelPool.length > 0 && consonantPool.length > 0;
-  const startWithVowel = options.random() < 0.5;
-
-  let word = "";
-  for (let i = 0; i < length - symbolCount && letters.length > 0; i++) {
-    const pool = alternate
-      ? startWithVowel === (i % 2 === 0)
-        ? vowelPool
-        : consonantPool
-      : letters;
-    word += pickWeighted(pool, fresh, options.random);
-  }
+  const letterCount = length - symbolCount;
+  const bigrams = options.bigrams;
+  let word =
+    bigrams === undefined || bigrams.pairs < minBigrams
+      ? undefined
+      : bigramWord(
+          letters,
+          fresh,
+          bigrams,
+          letterCount,
+          options.minLength,
+          options.random,
+        );
+  word ??= alternatingWord(letters, fresh, letterCount, options.random);
   for (let i = 0; i < symbolCount; i++) {
     word += pickWeighted(symbols, fresh, options.random);
   }
@@ -440,6 +555,7 @@ export function buildLessonWords(
   overrides: Partial<WordOptions> = {},
 ): string[] {
   const options = { ...defaultWordOptions, ...overrides };
+  options.bigrams ??= bigramTable(realWords, chars.allowed);
   const allowed = new Set(chars.allowed);
   const fresh = new Set(chars.fresh);
   const freshSymbols = chars.fresh.filter((char) => !isLetter(char));
@@ -757,6 +873,8 @@ export function trimAttempts(attempts: Attempt[]): Attempt[] {
 
 const masteryWindow = 3;
 const masterySampleBudget = 60;
+const budgetWordsPerTest = 40;
+const masteryMargin = 2 / 3;
 const maxMasterySamples = 20;
 const minMasterySamples = 3;
 export const masteryErrorRate = 0.03;
@@ -764,19 +882,33 @@ export const masteryErrorRate = 0.03;
 export type KeyMastery = { samples: number; errors: number; required: number };
 
 /**
- * Three attempts of a lesson yield about 60 fresh samples in total, so a wide
- * lesson such as capitals shares that budget across its keys instead of asking
- * 20 of each.
+ * Three attempts of a lesson yield about 60 fresh samples at the default test
+ * length, so a wide lesson such as capitals shares that budget across its keys
+ * instead of asking 20 of each. The budget follows the configured test length,
+ * since mastery pools a rolling window of three attempts rather than a running
+ * total: a short test kept against the full budget asks for more samples than
+ * the window can ever hold, and the lesson never unlocks however well it goes.
  */
 export function masterySamplesFor(
   lesson: Lesson,
   width = lesson.newKeys.length,
+  wordsPerTest = getConfig.trainerWordsPerTest,
 ): number {
-  if (width === 0) return maxMasterySamples;
-  return Math.min(
-    maxMasterySamples,
-    Math.max(minMasterySamples, Math.ceil(masterySampleBudget / width)),
+  const budget = (masterySampleBudget * wordsPerTest) / budgetWordsPerTest;
+  if (width === 0) {
+    return Math.min(
+      maxMasterySamples,
+      Math.max(minMasterySamples, Math.ceil(budget)),
+    );
+  }
+  // a pool gives each fresh character one word in `width`, so asking for the
+  // mean of a three attempt window is a coin flip per key and a wide lesson
+  // needs every key to win at once; leave a third of the window as margin
+  const reachable = Math.floor(
+    (masteryWindow * wordsPerTest * masteryMargin) / width,
   );
+  const asked = Math.max(minMasterySamples, Math.ceil(budget / width));
+  return Math.min(maxMasterySamples, asked, Math.max(1, reachable));
 }
 
 function attemptsOf(

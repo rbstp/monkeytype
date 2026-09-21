@@ -15,6 +15,10 @@ import {
   recordSamples,
   resetKeyStats,
 } from "../../../../src/ts/trainer/key-stats";
+import {
+  recordTransitions,
+  resetTransitions,
+} from "../../../../src/ts/trainer/transitions";
 
 vi.mock("../../../../src/ts/utils/json-data", async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -37,12 +41,27 @@ const wrong = (
   typed: KeySample["keycode"],
 ): KeySample => ({ keycode, shifted: false, correct: false, typed });
 
+const pair = (
+  prev: KeySample["keycode"],
+  keycode: KeySample["keycode"],
+  spacingMs: number,
+  times = 6,
+): KeySample[] =>
+  Array.from({ length: times }, () => ({
+    keycode,
+    shifted: false,
+    correct: true as const,
+    prev,
+    spacingMs,
+  }));
+
 describe("WeakKeysPanel", () => {
   beforeEach(() => {
     vi.spyOn(TestState, "inputLayoutObject").mockReturnValue(qwerty);
     TestState.setLastResult(null);
     resetKeyStats();
     resetConfusions();
+    resetTransitions();
     setConfigStore("layout", "default");
     setConfigStore("keymapLayout", "overrideSync");
     recordSamples(
@@ -81,6 +100,33 @@ describe("WeakKeysPanel", () => {
     expect(row).not.toHaveTextContent("m for q");
     expect(screen.getByRole("list")).toHaveTextContent(
       "You press k when you mean d (mirror hand, 5 times)",
+    );
+  });
+
+  it("hides the transitions row below the minimum", () => {
+    recordTransitions("qwerty", pair("KeyD", "KeyE", 300, 4));
+    render(() => <WeakKeysPanel />);
+    expect(screen.getByText("weak keys")).toBeInTheDocument();
+    expect(screen.queryByTestId("transitions")).toBeNull();
+  });
+
+  it("lists the one-handed pairs that run slower than the median", () => {
+    recordTransitions("qwerty", [
+      ...pair("KeyD", "KeyK", 100),
+      ...pair("KeyF", "KeyJ", 100),
+      ...pair("KeyS", "KeyX", 140),
+      ...pair("KeyD", "KeyE", 300),
+      ...pair("KeyA", "KeyS", 250),
+    ]);
+    render(() => <WeakKeysPanel />);
+    const row = screen.getByTestId("transitions");
+    expect(row).toHaveTextContent("slow transitions");
+    expect(row).toHaveTextContent("d then e (same finger) 300 ms");
+    expect(row).toHaveTextContent("a then s (same hand) 250 ms");
+    expect(row).not.toHaveTextContent("s then x");
+    expect(row).not.toHaveTextContent("d then k");
+    expect(screen.getByRole("list")).toHaveTextContent(
+      "d then e takes 300 ms (same finger)",
     );
   });
 });

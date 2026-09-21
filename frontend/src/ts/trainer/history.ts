@@ -25,7 +25,6 @@ const keptDays = 90;
 const deltaAfterDays = 7;
 const minNewSamples = 20;
 const minMovement = 0.15;
-const dayMs = 24 * 60 * 60 * 1000;
 
 export function dayOf(time: number): string {
   const date = new Date(time);
@@ -33,13 +32,16 @@ export function dayOf(time: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-function daysBefore(day: string, days: number): string {
+// calendar days, so a DST change never moves the prune or the cutoff a day
+export function daysBefore(day: string, days: number): string {
   const [year, month, date] = day.split("-").map(Number) as [
     number,
     number,
     number,
   ];
-  return dayOf(new Date(year, month - 1, date).getTime() - days * dayMs);
+  const shifted = new Date(year, month - 1, date);
+  shifted.setDate(shifted.getDate() - days);
+  return dayOf(shifted.getTime());
 }
 
 export function withSnapshot(

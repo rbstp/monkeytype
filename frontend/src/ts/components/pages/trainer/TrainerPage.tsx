@@ -8,6 +8,8 @@ import { inputLayoutObject, isTestActive } from "../../../states/test";
 import { getTheme } from "../../../states/theme";
 import {
   beginLesson,
+  beginReview,
+  beginWarmUp,
   exportBackupFile,
   importBackupFile,
   importRequest,
@@ -19,6 +21,7 @@ import {
   keyDeltas,
 } from "../../../trainer/history";
 import { getLayoutStats, layoutStatsName } from "../../../trainer/key-stats";
+import { LessonState, lessonState } from "../../../trainer/lesson-state";
 import {
   Attempt,
   bestOf,
@@ -34,7 +37,6 @@ import {
   progressLayout,
   unlockedUpTo,
 } from "../../../trainer/lessons";
-import { getActiveLesson } from "../../../trainer/session";
 import { FaSolidIcon } from "../../../types/font-awesome";
 import { cn } from "../../../utils/cn";
 import { keycodeToLayoutKey } from "../../../utils/key-converter";
@@ -45,15 +47,6 @@ import { Fa } from "../../common/Fa";
 import { H2 } from "../../common/Headers";
 import { Page } from "../../common/Page";
 import { DataTable, DataTableColumnDef } from "../../ui/table/DataTable";
-
-type LessonState = "active" | "current" | "unlocked" | "locked";
-
-function lessonState(index: number): LessonState {
-  if (unlockedUpTo() < index) return "locked";
-  if (getActiveLesson() === index) return "active";
-  if (currentLesson() === index) return "current";
-  return "unlocked";
-}
 
 function stateIcon(state: LessonState, index: number): FaSolidIcon {
   if (state === "active") return "fa-play";
@@ -327,6 +320,20 @@ export function TrainerPage(): JSXElement {
               class="hidden"
               data-testid="trainerImportFile"
               onChange={onFileChosen}
+            />
+            <Button
+              fa={{ icon: "fa-fire" }}
+              text="warm-up"
+              variant="text"
+              disabled={isTestActive()}
+              onClick={() => void beginWarmUp()}
+            />
+            <Button
+              fa={{ icon: "fa-history" }}
+              text="review"
+              variant="text"
+              disabled={isTestActive()}
+              onClick={() => void beginReview()}
             />
             <Button
               fa={{ icon: "fa-play" }}

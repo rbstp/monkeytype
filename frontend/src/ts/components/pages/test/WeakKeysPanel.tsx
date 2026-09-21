@@ -17,12 +17,17 @@ import {
   worstKeys,
 } from "../../../trainer/key-stats";
 import { buildTips } from "../../../trainer/tips";
+import {
+  getLayoutTransitions,
+  worstTransitions,
+} from "../../../trainer/transitions";
 import { cn } from "../../../utils/cn";
 import { keycodeToLayoutKey } from "../../../utils/key-converter";
 import { resolveLayoutName } from "../../../utils/layout-name";
 
 const shownKeys = 8;
 const shownConfusions = 4;
+const shownTransitions = 4;
 
 export function WeakKeysPanel() {
   const statsName = (): string =>
@@ -35,6 +40,9 @@ export function WeakKeysPanel() {
   const fingers = createMemo(() => fingerSummary(stats()));
   const confusions = createMemo(() =>
     worstConfusions(getLayoutConfusions(statsName()), shownConfusions),
+  );
+  const transitions = createMemo(() =>
+    worstTransitions(getLayoutTransitions(statsName()), shownTransitions),
   );
 
   const legend = (keycode: Keycode): string => {
@@ -60,6 +68,12 @@ export function WeakKeysPanel() {
         typed: legend(confusion.typed),
         kind: confusion.kind,
         count: confusion.count,
+      })),
+      transitions: transitions().map((transition) => ({
+        prev: legend(transition.prev),
+        key: legend(transition.key),
+        kind: transition.kind,
+        emaMs: transition.emaMs,
       })),
     });
   });
@@ -126,6 +140,23 @@ export function WeakKeysPanel() {
                     {" for "}
                     <span class="text-text">{legend(confusion.expected)}</span>
                     {` (${confusion.kind}) ×${confusion.count}`}
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
+        <Show when={transitions().length > 0}>
+          <div class="sm:col-span-2" data-testid="transitions">
+            <div class="pb-2 text-xs">slow transitions</div>
+            <div class="flex flex-wrap gap-2 text-xs">
+              <For each={transitions()}>
+                {(transition) => (
+                  <div class="rounded bg-sub-alt px-3 py-2">
+                    <span class="text-text">{legend(transition.prev)}</span>
+                    {" then "}
+                    <span class="text-text">{legend(transition.key)}</span>
+                    {` (${transition.kind}) ${Math.round(transition.emaMs)} ms`}
                   </div>
                 )}
               </For>

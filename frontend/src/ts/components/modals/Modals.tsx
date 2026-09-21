@@ -10,6 +10,7 @@ import { EditResultTagsModal } from "./EditResultTagsModal";
 import { ForgotPasswordModal } from "./ForgotPasswordModal";
 import { GoogleSignupModal } from "./GoogleSignUpModal";
 import { LastSignedOutResultModal } from "./LastSignedOutResultModal";
+import { LessonPickerModal } from "./LessonPickerModal";
 import { MobileTestConfigModal } from "./MobileTestConfigModal";
 import { PbTablesModal } from "./PbTablesModal";
 import { AddPresetModal } from "./preset/AddPresetModal";
@@ -52,6 +53,7 @@ export function Modals(): JSXElement {
       <ForgotPasswordModal />
       <UserReportModal />
       <EditResultTagsModal />
+      <LessonPickerModal />
     </>
   );
 }

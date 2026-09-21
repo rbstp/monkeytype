@@ -231,6 +231,24 @@ describe("TrainerPage", () => {
     expect(rows[2]).toHaveTextContent("locked");
   });
 
+  it("marks every map row with its shared lesson state", () => {
+    replaceProgress({
+      version: 3,
+      layouts: { qwerty: { current: "r-u", unlocked: "t-y", best: {} } },
+      attempts: [],
+    });
+    setActiveLesson(1);
+    render(() => <TrainerPage />);
+    const map = screen
+      .getAllByRole("button")
+      .filter((button) => button.hasAttribute("data-lesson-state"));
+    expect(
+      map.slice(0, 5).map((row) => row.getAttribute("data-lesson-state")),
+    ).toEqual(["unlocked", "active", "current", "unlocked", "locked"]);
+    expect(map[4]).toBeDisabled();
+    expect(map[1]).not.toBeDisabled();
+  });
+
   it("names the lessons by the legends of the input layout", () => {
     vi.spyOn(TestState, "inputLayoutObject").mockReturnValue(dvorak);
     replaceProgress({
