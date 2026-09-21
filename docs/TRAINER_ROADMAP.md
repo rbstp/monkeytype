@@ -36,8 +36,10 @@ does work`. Decisions that shaped it are in
   `buildLessonWords` draws by damped rank when the corpus is ordered by
   frequency and never mutates a real word, the 120-word pool is weighted by
   `charWeights`, and `rebuildLessonWords` recomputes it after every finished
-  lesson test. `pseudoWord` still fills gaps by alternating vowels and
-  consonants.
+  lesson test. `pseudoWord` fills the gaps by walking the `bigramTable` of the
+  corpus, and falls back to alternating vowels and consonants when the allowed
+  letters carry fewer than fifty pairs, which is where the home row sits. The
+  ladder rarely needs a filler at all, so the walk mostly serves the drill.
 - `startSession` in session.ts prepares any custom test from a word pool.
   `startDrill` runs 30 seconds on the three worst keys with a before and after
   notice, and never records a lesson attempt.
@@ -107,13 +109,14 @@ does work`. Decisions that shaped it are in
 22. pairwise-transitions. `feat(trainer): pairwise-transitions, name the slow
     same-finger bigrams`: a `trainerTransitions` store, a panel row, a tip and
     backup version 6.
+23. adaptive-words, n-gram fillers. `feat(trainer): adaptive-words, build the
+    fillers from the corpus bigrams`: `bigramTable` and a table walk in
+    `pseudoWord`, shared through `WordOptions.bigrams`. It reaches the drill and
+    the quota pass; the home row stays on the fallback, under fifty pairs, and
+    the later lessons draw enough real words to need no filler.
 
 ## Open
 
-- N-gram fillers. Build pseudo words from the corpus bigrams instead of
-  alternating vowels and consonants, so a filler reads like a word. The table
-  must come from the word list passed in, never from `Math.random`, or the
-  seeded specs stop being deterministic.
 - The picker modal. Switch lessons without leaving the test screen, from the
   chip and from a command. A command that opens a modal needs `opensModal`, or
   the commandline wipes the chain on exec.

@@ -5,6 +5,7 @@ import { setConfigStore } from "../../src/ts/config/store";
 import {
   Attempt,
   bestOf,
+  bigramTable,
   buildLessonWords,
   canUnlock,
   countPerKey,
@@ -371,6 +372,27 @@ describe("lessons", () => {
     });
   });
 
+  describe("bigramTable", () => {
+    it("counts starts, pairs and ends over the allowed letters only", () => {
+      const table = bigramTable(["sad", "ask", "the"], ["a", "s", "d", "k"]);
+      expect(table.starts).toEqual({ s: 1, a: 1 });
+      expect(table.next).toEqual({
+        s: { a: 1, k: 1 },
+        a: { d: 1, s: 1 },
+        d: { "": 1 },
+        k: { "": 1 },
+      });
+      expect(table.pairs).toBe(4);
+    });
+
+    it("learns from words the lesson cannot spell", () => {
+      const table = bigramTable(["said"], ["a", "s", "d"]);
+      expect(table.next["s"]).toEqual({ a: 1 });
+      expect(table.next["a"]).toBeUndefined();
+      expect(table.next["d"]).toEqual({ "": 1 });
+    });
+  });
+
   describe("buildLessonWords", () => {
     const options = { random: seeded(42), count: 40 };
 
@@ -439,6 +461,68 @@ describe("lessons", () => {
       const withFresh = words.filter((word) => /[ei]/.test(word));
 
       expect(withFresh.length).toBeGreaterThanOrEqual(words.length / 2);
+    });
+
+    describe("bigram fillers", () => {
+      const chars = lessonChars(1, qwerty);
+      const letters = [..."asdfjklei"];
+      const everyPairButDoubles = letters.flatMap((from) =>
+        letters.filter((to) => to !== from).map((to) => `${from}${to}`),
+      );
+
+      it("only writes pairs the corpus taught it", () => {
+        const table = bigramTable(everyPairButDoubles, chars.allowed);
+        expect(table.pairs).toBeGreaterThanOrEqual(50);
+        const words = buildLessonWords([], chars, {
+          count: 40,
+          random: seeded(9),
+          bigrams: table,
+        });
+        expect(words).toHaveLength(40);
+        for (const word of words) {
+          for (let i = 1; i < word.length; i++) {
+            expect(table.next[word[i - 1] as string]).toHaveProperty(
+              word[i] as string,
+            );
+          }
+        }
+        expect(words).not.toEqual(
+          buildLessonWords([], chars, { count: 40, random: seeded(9) }),
+        );
+      });
+
+      it("builds its own table from the corpus when none is passed", () => {
+        const table = bigramTable(everyPairButDoubles, chars.allowed);
+        expect(table.pairs).toBeGreaterThanOrEqual(50);
+        const words = buildLessonWords(everyPairButDoubles, chars, {
+          count: 40,
+          minReal: 1000,
+          random: seeded(31),
+        });
+        const pseudo = words.filter(
+          (word) => !everyPairButDoubles.includes(word),
+        );
+        expect(pseudo.length).toBeGreaterThan(0);
+        for (const word of pseudo) {
+          for (let i = 1; i < word.length; i++) {
+            expect(word[i]).not.toBe(word[i - 1]);
+          }
+        }
+      });
+
+      it("falls back to the vowel and consonant alternation below fifty pairs", () => {
+        const poor = bigramTable(["as", "sad", "dial"], chars.allowed);
+        expect(poor.pairs).toBeLessThan(50);
+        expect(
+          buildLessonWords([], chars, {
+            count: 20,
+            random: seeded(5),
+            bigrams: poor,
+          }),
+        ).toEqual(
+          buildLessonWords([], chars, { count: 20, random: seeded(5) }),
+        );
+      });
     });
 
     it("stops when nothing can be generated", () => {

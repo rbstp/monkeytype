@@ -10,7 +10,12 @@ import {
   layoutStatsName,
   worstKeys,
 } from "./key-stats";
-import { buildLessonWords, lessonChars, lessonIndex } from "./lessons";
+import {
+  bigramTable,
+  buildLessonWords,
+  lessonChars,
+  lessonIndex,
+} from "./lessons";
 import { Drill, loadCorpus, startSession } from "./session";
 
 export const drillKeyCount = 3;
@@ -65,6 +70,7 @@ export function buildDrillWords(
       {
         count,
         random,
+        bigrams: bigramTable(realWords, [...allowed]),
       },
     );
     return pseudo[pseudoIndex++];
