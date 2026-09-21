@@ -141,8 +141,8 @@ export function buildTips(input: TipInput): string[] {
     accuracyTip(input),
     rhythmTip(input),
     confusionTip(input),
-    transitionTip(input),
     keysTip(input),
+    transitionTip(input),
   ]
     .filter((tip): tip is string => tip !== undefined)
     .slice(0, maxTips);

@@ -19,6 +19,11 @@ does work`. Decisions that shaped it are in
   lessons of the current layout with the `lessonState` the trainer page reads.
   LessonResultCard.tsx prints the shortfall or the unlock with retry and next;
   the unlock toast lives in trainer/index.ts.
+- `unlockBlocker` beside `unlockStatus` builds the one sentence naming what is
+  holding a lesson: the weakest key and what it needs, or the wpm shortfall in
+  the speed phase. The result card reads it, and `lessonBlocker` beside
+  `lessonState` feeds it to the map row and the picker row of the lesson being
+  practised, and to no other row. Nothing short means no sentence.
 - Key stats keep speed apart from errors: `emaMs` takes only correct,
   non-recovery samples with pauses capped at three times the average, `errRate`
   is its own moving average, and deletes advance the clock. Shift is folded
@@ -29,6 +34,8 @@ does work`. Decisions that shaped it are in
   and `classifyConfusion` name the worst confusion pairs, and `worstTransitions`
   and `classifyTransition` name the one-handed pairs running at least half again
   the layout's median. The weak-keys panel and `buildTips` show all three.
+  `buildTips` keeps three tips and orders them accuracy, rhythm, confusion,
+  keys, transition, so one slow pair no longer displaces the slowest keys.
 - Unlocks read the configured floor through `criteriaFor`. `masteryOf` pools
   `perKey` over the last three attempts, so a new key needs its share of a
   sample budget and at most 3% errors before `unlockStatus` says ok, and the
@@ -42,14 +49,22 @@ does work`. Decisions that shaped it are in
   `charWeights`, and `rebuildLessonWords` recomputes it after every finished
   lesson test. `pseudoWord` fills the gaps by walking the `bigramTable` of the
   corpus, and falls back to alternating vowels and consonants when the allowed
-  letters carry fewer than fifty pairs, which is where the home row sits. The
-  ladder rarely needs a filler at all, so the walk mostly serves the drill.
+  letters carry fewer than fifty pairs, which is where the home row sits, or
+  when the walk dead-ends under the length floor every real word clears. The
+  ladder rarely needs a filler at all, so the walk mostly serves the drill and
+  the table is built on the first filler rather than on every call;
+  `WordOptions.bigrams` still takes the ready table the drill passes. A word end
+  counts only when the character before it is allowed too, the rule a letter
+  pair already followed.
 - `startSession` in session.ts prepares any custom test from a word pool, and
   its `Drill.kind` tells the three targeted sessions apart. `startDrill` runs 30
   seconds on the three worst keys, `startReview` on the unlocked keys that
   `reviewKeys` finds slow, error-prone or slower than last week, and
   `startWarmUp` over every character the unlocked lessons teach. None of them
   records a lesson attempt, shows the chip, or lets `rebuildLessonWords` run.
+  `warmUpSummary` counts the words committed in the event log, not wpm over the
+  clock, which measured five-character units; the word in progress when the
+  clock runs out was never committed, so it is not counted.
 - The config cannot leak: lifecycle.ts sets the store before it fires the
   finished event, the persisted config hook in session.ts keeps lesson values
   out of the saved config, and index.ts scores an attempt only when
@@ -60,6 +75,12 @@ does work`. Decisions that shaped it are in
   layout, and a best per lesson that trimming never evicts. Key stats do the
   same. `exportBackupFile` and `importBackupFile` carry version 6: key stats,
   progress, confusions, transitions and the key history.
+- An id the list cannot resolve still reads as the first lesson, since a read
+  has to land somewhere, but `unlockedAfterSync` no longer writes that reading
+  back. It walks the attempts from the first lesson through `unlockStatus` and
+  keeps the unreadable id when they earn nothing, so a hand-edited or stale id
+  is repaired to what was earned rather than reset to lesson 1. A pointer that
+  resolves is still walked forward only.
 - The trainer page shows the lesson map, a continue button, an attempts chart
   against the configured floors, a per-lesson table and the key changes from
   `keyDeltas`, which reads a cutoff `daysBefore` counts in calendar days.
@@ -134,6 +155,21 @@ does work`. Decisions that shaped it are in
 27. hardening, a reachable mastery gate. `fix(trainer): hardening, scale the
     mastery budget with the test length`: a short test no longer asks for more
     samples than its rolling window can hold.
+28. unlock-integrity, a lost pointer repairs itself. `fix(trainer):
+    unlock-integrity, repair a lost unlock pointer instead of resetting it`:
+    `indexOrFirst` stays the fail-safe read, `unlockedAfterSync` rebuilds an
+    unreadable pointer from the attempts and never persists lesson 1 over it.
+29. unlock-legibility, say what is holding the lesson. `feat(trainer):
+    unlock-legibility, name the blocker on the map and in the picker`:
+    `unlockBlocker` is extracted from the result card and read by all three.
+30. polish, the four carry-overs from #8. `fix(trainer): polish, tip order,
+    a lazy bigram table, word ends and the warm-up count`: the slowest keys
+    outrank the transition, the table is built on first use, a word end needs
+    its neighbour allowed, and the warm-up counts committed words.
+31. coverage, the cases the review named. `test(trainer): coverage, the
+    layoutfluid gate, the filler floor and the warm-up sentence`: three specs,
+    the two one-line fixes their asserts demanded, and the warm-up and review
+    finish notices read back from headless Chromium.
 
 ## Open
 
@@ -152,24 +188,25 @@ Standing requirements, carry these into every step
 - No code comments unless a line would be misread without one. When needed, one
   short line saying why, never what. JSDoc blocks that restate a signature count
   as comments.
-- Steps 21 to 26 go on one branch from `trainer` at 40ce3b3 or later, one commit
-  per step (21 is a `docs(trainer): ...`, 26 a `fix(trainer): ...`, the rest
-  `feat(trainer): ...` in the style of the history), each step validated (specs,
-  typecheck, lint, format, madge, headless Chromium where the step touches the
-  UI) and its roadmap lines updated before the next step starts. Do not open a
-  PR between steps.
-- Once step 26 is committed, spawn a subagent with model opus to review the full
+- Steps 28 to 31 go on one branch from `trainer` at the merge of #8 or later,
+  one commit per step (28 and 30 are `fix(trainer): ...`, 29 a `feat(trainer):
+  ...`, 31 a `test(trainer): ...`), each step validated (specs, typecheck, lint,
+  format, madge, headless Chromium where the step touches the UI) and its
+  roadmap lines updated before the next step starts. Do not open a PR between
+  steps.
+- Once step 31 is committed, spawn a subagent with model opus to review the full
   branch diff against origin/trainer. Ask it to check correctness, any behaviour
   change when no lesson, drill, warm-up or review is active, missing test
-  coverage, whether the trimmed roadmap still describes the code, and violations
-  of the two rules above. Fix what it finds and fold each fix into the step
-  commit it belongs to with `fixup!` commits and `GIT_SEQUENCE_EDITOR=: git
-  rebase -i --autosquash origin/trainer`. Expect conflicts in files every step
-  touches (lessons.ts, session.ts, docs/TRAINER_ROADMAP.md); resolve them per
-  step rather than taking a later step's version, and set `GIT_EDITOR` to a
-  command that strips comment lines so no squash message keeps a "# This is a
-  combination" header. Confirm `git diff <pre-rebase tip> HEAD` is empty
-  afterwards. Do this even if the diff looks small.
+  coverage, whether the roadmap still describes the code, and violations of the
+  two rules above. Fix what it finds and fold each fix into the step commit it
+  belongs to with `fixup!` commits and `GIT_SEQUENCE_EDITOR=: git rebase -i
+  --autosquash origin/trainer`. Expect conflicts in docs/TRAINER_ROADMAP.md,
+  which every step touches: resolve them per step rather than taking a later
+  step's version, remembering that a fixup patch cut from the working tree
+  carries later steps' lines that do not exist yet at that commit. Set
+  `GIT_EDITOR` to a command that strips comment lines so no squash message keeps
+  a "# This is a combination" header. Confirm `git diff <pre-rebase tip> HEAD`
+  is empty afterwards. Do this even if the diff looks small.
 - Then push the branch, open one PR against trainer using
   .github/pull_request_template.md, subscribe to its activity and schedule an
   hourly check-in until it is merged or closed. When the PR is merged, stop

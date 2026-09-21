@@ -21,7 +21,11 @@ import {
   keyDeltas,
 } from "../../../trainer/history";
 import { getLayoutStats, layoutStatsName } from "../../../trainer/key-stats";
-import { LessonState, lessonState } from "../../../trainer/lesson-state";
+import {
+  lessonBlocker,
+  LessonState,
+  lessonState,
+} from "../../../trainer/lesson-state";
 import {
   Attempt,
   bestOf,
@@ -375,11 +379,23 @@ export function TrainerPage(): JSXElement {
                     <Fa icon={stateIcon(state(), index)} fixedWidth />
                     {lessonNumber(index, progressLayout())}
                   </span>
-                  <span class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                    <span>{nameOf(lesson)}</span>
-                    <Show when={legends(lesson, index)}>
+                  <span class="grid justify-items-start gap-1">
+                    <span class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                      <span>{nameOf(lesson)}</span>
+                      <Show when={legends(lesson, index)}>
+                        {(text) => (
+                          <span class={cn("font-mono", subClass())}>
+                            {text()}
+                          </span>
+                        )}
+                      </Show>
+                    </span>
+                    <Show when={lessonBlocker(index, inputLayoutObject())}>
                       {(text) => (
-                        <span class={cn("font-mono", subClass())}>
+                        <span
+                          data-testid="lessonBlocker"
+                          class={cn("text-xs", subClass())}
+                        >
                           {text()}
                         </span>
                       )}

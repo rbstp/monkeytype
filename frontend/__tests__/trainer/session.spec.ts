@@ -88,7 +88,11 @@ type FinishedFlags = {
   countsForLesson?: boolean;
 };
 
-function finished(targetWords: string[], flags: FinishedFlags = {}): void {
+function finished(
+  targetWords: string[],
+  flags: FinishedFlags = {},
+  commits = 0,
+): void {
   const eventLog: EventLog = {
     version: 1,
     events: [
@@ -104,6 +108,19 @@ function finished(targetWords: string[], flags: FinishedFlags = {}): void {
           inputValue: "",
         },
       },
+      ...Array.from({ length: commits }, (_unused, index) => ({
+        type: "input" as const,
+        testMs: 200 + index * 100,
+        data: {
+          inputType: "insertText" as const,
+          data: " ",
+          correct: true,
+          commitsWord: true as const,
+          wordIndex: index,
+          charIndex: 1,
+          inputValue: "",
+        },
+      })),
     ],
     context: {
       targetWords,
@@ -126,6 +143,54 @@ function finished(targetWords: string[], flags: FinishedFlags = {}): void {
     countsForLesson: true,
     ...flags,
   });
+}
+
+/** one correct pair for a transition and one wrong input for a confusion */
+function pairedTest(): Parameters<typeof onTestFinished>[0] {
+  const insert = (
+    testMs: number,
+    data: string,
+    correct: boolean,
+    charIndex: number,
+  ): EventLog["events"][number] => ({
+    type: "input",
+    testMs,
+    data: {
+      inputType: "insertText",
+      data,
+      correct,
+      wordIndex: 0,
+      charIndex,
+      inputValue: "",
+    },
+  });
+  return {
+    eventLog: {
+      version: 1,
+      events: [
+        insert(100, "d", true, 0),
+        insert(400, "a", true, 1),
+        insert(500, "k", false, 2),
+        insert(600, "d", true, 2),
+      ],
+      context: {
+        targetWords: ["dad "],
+        mode: "words",
+        mode2: "10",
+        bailedOut: false,
+        koreanStatus: false,
+      },
+    },
+    completedEvent: {
+      wpm: 40,
+      acc: 90,
+      testDuration: 30,
+      bailedOut: false,
+    } as CompletedEvent,
+    invalid: false,
+    samplesUsable: true,
+    countsForLesson: true,
+  };
 }
 
 const flush = async (): Promise<void> =>
@@ -815,6 +880,23 @@ describe("trainer session", () => {
         spacingMs: ms,
       }));
 
+    it("names the warm-up when the layout offers no keys to warm up on", async () => {
+      const charsSpy = vi
+        .spyOn(Lessons, "lessonChars")
+        .mockReturnValue({ allowed: [], fresh: [] });
+
+      expect(await startWarmUp()).toBe(false);
+      expect(noticeMock).toHaveBeenCalledWith(
+        "This layout has no keys to warm up on.",
+      );
+      expect(noticeMock).not.toHaveBeenCalledWith(
+        "This layout has no keys for this lesson.",
+      );
+      expect(getActiveDrill()).toBeNull();
+
+      charsSpy.mockRestore();
+    });
+
     it("warms up over every character the unlocked lessons teach", async () => {
       replaceProgress({
         version: 3,
@@ -847,11 +929,11 @@ describe("trainer session", () => {
         words.some((word) => [...word].some((char) => !homeRow.has(char))),
       ).toBe(true);
 
-      finished(["sad "]);
+      finished(["sad "], {}, 3);
       await flush();
       expect(progress().attempts).toHaveLength(0);
       expect(getKeyStats().layouts["qwerty"]?.["KeyS"]?.total).toBe(1);
-      expect(noticeMock).toHaveBeenCalledWith("warm-up done, 20 words", {
+      expect(noticeMock).toHaveBeenCalledWith("warm-up done, 3 words", {
         durationMs: 8000,
       });
     });
@@ -1111,6 +1193,30 @@ describe("trainer session", () => {
       await flush();
 
       expect(getKeyStats().layouts["qwerty"]).toBeUndefined();
+    });
+
+    it("skips confusions and transitions too while layoutfluid is active", async () => {
+      replaceConfig({ mode: "words", funbox: ["layoutfluid"] });
+
+      onTestFinished(pairedTest());
+      await flush();
+
+      expect(getKeyStats().layouts["qwerty"]).toBeUndefined();
+      expect(getLayoutConfusions("qwerty")).toEqual({});
+      expect(getLayoutTransitions("qwerty")).toEqual({});
+    });
+
+    it("records all three stores without layoutfluid", async () => {
+      replaceConfig({ mode: "words", funbox: [] });
+
+      onTestFinished(pairedTest());
+      await flush();
+
+      expect(getKeyStats().layouts["qwerty"]?.["KeyD"]?.total).toBe(3);
+      expect(getLayoutConfusions("qwerty")).toEqual({ KeyD: { KeyK: 1 } });
+      expect(getLayoutTransitions("qwerty")).toEqual({
+        KeyD: { KeyA: { emaMs: 300, count: 1 } },
+      });
     });
   });
 

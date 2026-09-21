@@ -1,9 +1,9 @@
-import { CompletedEvent } from "@monkeytype/schemas/results";
 import { LayoutObject } from "@monkeytype/schemas/layouts";
 import { Config } from "../config/store";
 import { Keycode } from "../constants/keys";
 import { showNoticeNotification } from "../states/notifications";
 import { __nonReactive } from "../states/test";
+import { EventLog } from "../test/events/types";
 import { keycodeToLayoutKey } from "../utils/key-converter";
 import { resolveLayoutName } from "../utils/layout-name";
 import { dayOf, getLayoutHistory, KeyDelta, keyDeltas } from "./history";
@@ -116,10 +116,17 @@ export function drillSummary(
     .join(", ");
 }
 
-export function warmUpSummary(
-  completed: Pick<CompletedEvent, "wpm" | "testDuration">,
-): string {
-  const words = Math.round((completed.wpm * completed.testDuration) / 60);
+export function warmUpSummary(log: EventLog): string {
+  let words = 0;
+  for (const event of log.events) {
+    if (
+      event.type === "input" &&
+      "commitsWord" in event.data &&
+      event.data.commitsWord === true
+    ) {
+      words++;
+    }
+  }
   return `warm-up done, ${words} words`;
 }
 
@@ -252,6 +259,10 @@ export async function startWarmUp(): Promise<boolean> {
       weights: charWeights(getLayoutStats(statsName()), layout),
     },
   );
+  if (words.length === 0) {
+    showNoticeNotification("This layout has no keys to warm up on.");
+    return false;
+  }
   return startSession({
     words,
     indicator: "warm-up",

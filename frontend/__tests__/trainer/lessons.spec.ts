@@ -18,6 +18,7 @@ import {
   LESSON_IDS_V2,
   lessonKeycodes,
   lessonKeyLegend,
+  Lesson,
   lessonName,
   lessonNumber,
   LESSONS,
@@ -33,6 +34,7 @@ import {
   resetProgress,
   setCurrentLesson,
   trimAttempts,
+  unlockBlocker,
   unlockedUpTo,
   unlockStatus,
   UnlockStatus,
@@ -389,12 +391,95 @@ describe("lessons", () => {
       const table = bigramTable(["said"], ["a", "s", "d"]);
       expect(table.next["s"]).toEqual({ a: 1 });
       expect(table.next["a"]).toBeUndefined();
-      expect(table.next["d"]).toEqual({ "": 1 });
+      expect(table.next["d"]).toBeUndefined();
+    });
+
+    it("counts a word end only when the character before it is allowed too", () => {
+      expect(bigramTable(["aid"], ["a", "d"]).next["d"]).toBeUndefined();
+      expect(bigramTable(["ad"], ["a", "d"]).next["d"]).toEqual({ "": 1 });
+      expect(bigramTable(["a"], ["a"]).next["a"]).toBeUndefined();
     });
   });
 
   describe("buildLessonWords", () => {
     const options = { random: seeded(42), count: 40 };
+
+    // bigramTable walks the corpus with for..of while the real-word filter
+    // goes by index, so a counted iterator sees the table build and nothing else
+    const countingCorpus = (
+      words: string[],
+    ): { words: string[]; walks: () => number } => {
+      let walks = 0;
+      const corpus = [...words];
+      Object.defineProperty(corpus, Symbol.iterator, {
+        value: function (this: string[]): IterableIterator<string> {
+          walks++;
+          return Array.prototype[Symbol.iterator].call(this);
+        },
+      });
+      return { words: corpus, walks: () => walks };
+    };
+    const alphabet = [..."abcdefghijklmnopqrstuvwxyz"];
+    const plenty = Array.from({ length: 40 }, (_unused, index) =>
+      `word${index}`.replace(
+        /\d/g,
+        (digit) => alphabet[Number(digit)] as string,
+      ),
+    );
+
+    it("leaves the bigram table unbuilt when no filler is drawn", () => {
+      const corpus = countingCorpus(plenty);
+      const words = buildLessonWords(
+        corpus.words,
+        { allowed: alphabet, fresh: [] },
+        { count: 40, random: seeded(7) },
+      );
+      expect(words).toHaveLength(40);
+      expect(corpus.walks()).toBe(0);
+    });
+
+    it("builds the bigram table once on the first filler", () => {
+      const corpus = countingCorpus(["as", "lad"]);
+      const words = buildLessonWords(
+        corpus.words,
+        { allowed: alphabet, fresh: [] },
+        { count: 40, random: seeded(7) },
+      );
+      expect(words).toHaveLength(40);
+      expect(corpus.walks()).toBe(1);
+    });
+
+    it("never draws a filler shorter than minLength from a dead end", () => {
+      // every continuation of the start letters sits outside the lesson, so
+      // the walk has nowhere to go after the first character
+      const corpus = Array.from({ length: 30 }, (_unused, index) => {
+        const tail = alphabet[(index % 20) + 4] as string;
+        return `a${tail}${alphabet[(index % 19) + 5] as string}`;
+      });
+      const table = bigramTable(corpus, alphabet);
+      expect(table.pairs).toBeGreaterThanOrEqual(50);
+      const words = buildLessonWords(
+        [],
+        { allowed: ["a", "b", "c"], fresh: [] },
+        { count: 30, minLength: 3, random: seeded(11), bigrams: table },
+      );
+      expect(words).toHaveLength(30);
+      for (const word of words) expect(word.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it("takes a ready table without walking the corpus", () => {
+      const corpus = countingCorpus(["as", "lad"]);
+      buildLessonWords(
+        corpus.words,
+        { allowed: alphabet, fresh: [] },
+        {
+          count: 40,
+          random: seeded(7),
+          bigrams: bigramTable(["as", "lad"], alphabet),
+        },
+      );
+      expect(corpus.walks()).toBe(0);
+    });
 
     it("only uses allowed characters and keeps lengths in range", () => {
       const chars = lessonChars(0, qwerty);
@@ -1242,6 +1327,123 @@ describe("lessons", () => {
     });
   });
 
+  describe("unlockBlocker", () => {
+    const lesson = LESSONS[lessonIndex("e-i")] as Lesson;
+    const status = (over: Partial<UnlockStatus> = {}): UnlockStatus => ({
+      ok: false,
+      phase: "accuracy",
+      wpmShort: 0,
+      accShort: 0,
+      weakKeys: [],
+      ...over,
+    });
+    const attempt = (over: Partial<Attempt> = {}): Attempt => ({
+      lesson: "e-i",
+      layout: "qwerty",
+      wpm: 27,
+      acc: 95,
+      perKey: {},
+      ts: 0,
+      ...over,
+    });
+    const blocker = (
+      over: Partial<UnlockStatus>,
+      latest: Attempt = attempt(),
+    ): string =>
+      unlockBlocker(status(over), latest, defaultCriteria, lesson, qwerty);
+
+    it("says nothing once the lesson is passed", () => {
+      expect(blocker({ ok: true, phase: "speed" })).toBe("");
+    });
+
+    it("names the wpm shortfall in the speed phase", () => {
+      expect(blocker({ phase: "speed", wpmShort: 3 })).toBe(
+        "speed phase: 27 wpm, 3 short of 30",
+      );
+    });
+
+    it("names the accuracy shortfall in the speed phase once the speed holds", () => {
+      expect(
+        blocker({ phase: "speed", accShort: 2 }, attempt({ wpm: 40 })),
+      ).toBe("speed phase: accuracy 95%, 2 short of 97%");
+    });
+
+    it("asks for one more pass when nothing is short in the speed phase", () => {
+      expect(blocker({ phase: "speed" }, attempt({ wpm: 40, acc: 99 }))).toBe(
+        "speed phase: pass once more to unlock",
+      );
+    });
+
+    it("names the accuracy shortfall in the accuracy phase", () => {
+      expect(blocker({ accShort: 2 })).toBe(
+        "accuracy phase: accuracy 95%, 2 short of 97%",
+      );
+    });
+
+    it("names the weakest key and the samples it still needs", () => {
+      expect(
+        blocker(
+          {
+            weakKeys: [
+              { keycode: "KeyI", samples: 8, errors: 0, required: 20 },
+            ],
+          },
+          attempt({ acc: 99 }),
+        ),
+      ).toBe("accuracy phase: i needs 12 more samples");
+    });
+
+    it("names the weakest key error share once it has the samples", () => {
+      expect(
+        blocker(
+          {
+            weakKeys: [
+              { keycode: "KeyI", samples: 25, errors: 2, required: 20 },
+            ],
+          },
+          attempt({ acc: 99 }),
+        ),
+      ).toBe("accuracy phase: i errs 8%, bar 3%");
+    });
+
+    it("skips the accuracy shortfall before any attempt", () => {
+      expect(
+        unlockBlocker(
+          status({
+            accShort: 97,
+            weakKeys: [
+              { keycode: "KeyI", samples: 0, errors: 0, required: 20 },
+            ],
+          }),
+          undefined,
+          defaultCriteria,
+          lesson,
+          qwerty,
+        ),
+      ).toBe("accuracy phase: i needs 20 more samples");
+    });
+
+    it("falls back to the keycode without a layout", () => {
+      expect(
+        unlockBlocker(
+          status({
+            weakKeys: [
+              { keycode: "KeyI", samples: 0, errors: 0, required: 20 },
+            ],
+          }),
+          attempt({ acc: 99 }),
+          defaultCriteria,
+          lesson,
+          undefined,
+        ),
+      ).toBe("accuracy phase: KeyI needs 20 more samples");
+    });
+
+    it("says only the phase when nothing is short and no key is weak", () => {
+      expect(blocker({}, attempt({ acc: 99 }))).toBe("accuracy phase");
+    });
+  });
+
   describe("criteriaFor", () => {
     it("maps the unlock setting to a bar", () => {
       expect(criteriaFor("normal")).toBe(defaultCriteria);
@@ -1641,6 +1843,67 @@ describe("lessons", () => {
       expect(unlockedUpTo()).toBe(0);
       expect(bestOf("home-row")).toBe(40);
       expect(progress().attempts).toHaveLength(1);
+    });
+
+    it("leaves an unknown stored id alone when the attempts prove nothing", () => {
+      replaceProgress({
+        version: 3,
+        layouts: {
+          qwerty: { current: "home-row", unlocked: "gone", best: {} },
+        },
+        attempts: [],
+      });
+      expect(progress().layouts["qwerty"]?.unlocked).toBe("gone");
+      expect(unlockedUpTo()).toBe(0);
+    });
+
+    it("repairs an unknown stored id to the furthest lesson the attempts earn", () => {
+      replaceProgress({
+        version: 3,
+        layouts: {
+          qwerty: { current: "home-row", unlocked: "gone", best: {} },
+        },
+        attempts: [
+          attempt("home-row", "qwerty", 40),
+          attempt("e-i", "qwerty", 40),
+        ],
+      });
+      expect(progress().layouts["qwerty"]?.unlocked).toBe("r-u");
+      expect(unlockedUpTo()).toBe(lessonIndex("r-u"));
+    });
+
+    it("never moves a resolvable pointer back to what the attempts prove", () => {
+      replaceProgress({
+        version: 3,
+        layouts: {
+          qwerty: { current: "home-row", unlocked: "numbers", best: {} },
+        },
+        attempts: [attempt("home-row", "qwerty", 40)],
+      });
+      expect(progress().layouts["qwerty"]?.unlocked).toBe("numbers");
+      expect(unlockedUpTo()).toBe(lessonIndex("numbers"));
+    });
+
+    it("still walks forward from a resolvable pointer past an unearned lesson", () => {
+      replaceProgress({
+        version: 3,
+        layouts: { qwerty: { current: "home-row", unlocked: "r-u", best: {} } },
+        attempts: [attempt("r-u", "qwerty", 40), attempt("t-y", "qwerty", 40)],
+      });
+      expect(progress().layouts["qwerty"]?.unlocked).toBe("g-h");
+    });
+
+    it("moves an unreadable pointer forward rather than leaving it stuck", () => {
+      replaceProgress({
+        version: 3,
+        layouts: {
+          qwerty: { current: "home-row", unlocked: "gone", best: {} },
+        },
+        attempts: [],
+      });
+      expect(progress().layouts["qwerty"]?.unlocked).toBe("gone");
+      expect(recordAttempt(attempt("home-row", "qwerty", 40))).toBe(true);
+      expect(progress().layouts["qwerty"]?.unlocked).toBe("e-i");
     });
 
     it("re-evaluates unlocks per layout on replace", () => {

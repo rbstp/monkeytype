@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { EventLog } from "../../src/ts/test/events/types";
 import {
   buildDrillWords,
   drillSummary,
@@ -119,10 +120,60 @@ describe("drill", () => {
   });
 
   describe("warmUpSummary", () => {
-    it("counts the words of the completed event", () => {
-      expect(warmUpSummary({ wpm: 40, testDuration: 30 })).toBe(
-        "warm-up done, 20 words",
+    const log = (commits: boolean[]): EventLog => ({
+      version: 1,
+      events: commits.map((commitsWord, index) => ({
+        type: "input",
+        testMs: index * 100,
+        data: {
+          inputType: "insertText",
+          data: commitsWord ? " " : "a",
+          correct: true,
+          wordIndex: 0,
+          charIndex: index,
+          inputValue: "",
+          commitsWord: commitsWord ? true : undefined,
+        },
+      })),
+      context: {
+        targetWords: [],
+        mode: "custom",
+        mode2: "custom",
+        bailedOut: false,
+        koreanStatus: false,
+      },
+    });
+
+    it("counts the words committed in the log, not the wpm over the clock", () => {
+      expect(warmUpSummary(log([false, false, true, false, true]))).toBe(
+        "warm-up done, 2 words",
       );
+    });
+
+    it("counts nothing when no word was committed", () => {
+      expect(warmUpSummary(log([false, false]))).toBe("warm-up done, 0 words");
+    });
+
+    it("ignores a delete, which carries no commit flag at all", () => {
+      const base = log([true, false, true]);
+      expect(
+        warmUpSummary({
+          ...base,
+          events: [
+            ...base.events,
+            {
+              type: "input",
+              testMs: 400,
+              data: {
+                inputType: "deleteContentBackward",
+                wordIndex: 0,
+                charIndex: 0,
+                inputValue: "",
+              },
+            },
+          ],
+        }),
+      ).toBe("warm-up done, 2 words");
     });
   });
 

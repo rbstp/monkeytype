@@ -10,6 +10,7 @@ import { isModalOpen, showModal } from "../../../src/ts/states/modals";
 import * as TestState from "../../../src/ts/states/test";
 import * as Actions from "../../../src/ts/trainer/actions";
 import {
+  Attempt,
   LESSONS,
   replaceProgress,
   resetProgress,
@@ -95,6 +96,50 @@ describe("LessonPickerModal", () => {
     expect(rows()[0]).not.toBeDisabled();
     expect(rows()[4]).toBeDisabled();
     expect(rows()[0]).toHaveTextContent("best 44");
+  });
+
+  it("shows what is holding the current lesson on its row and on no other", () => {
+    const attempt: Attempt = {
+      lesson: "e-i",
+      layout: "qwerty",
+      wpm: 40,
+      acc: 99,
+      perKey: {},
+      ts: 1,
+    };
+    replaceProgress({
+      version: 3,
+      layouts: { qwerty: { current: "e-i", unlocked: "e-i", best: {} } },
+      attempts: [attempt],
+    });
+    render(() => <LessonPickerModal />);
+    const blockers = screen.getAllByTestId("lessonBlocker");
+    expect(blockers).toHaveLength(1);
+    expect(blockers[0]).toHaveTextContent(
+      "accuracy phase: e needs 20 more samples",
+    );
+    expect(rows()[1]).toContainElement(blockers[0] as HTMLElement);
+  });
+
+  it("says nothing when the current lesson has nothing short", () => {
+    const attempt: Attempt = {
+      lesson: "e-i",
+      layout: "qwerty",
+      wpm: 40,
+      acc: 99,
+      perKey: {
+        KeyE: { total: 20, errors: 0 },
+        KeyI: { total: 20, errors: 0 },
+      },
+      ts: 1,
+    };
+    replaceProgress({
+      version: 3,
+      layouts: { qwerty: { current: "e-i", unlocked: "e-i", best: {} } },
+      attempts: [attempt],
+    });
+    render(() => <LessonPickerModal />);
+    expect(screen.queryAllByTestId("lessonBlocker")).toHaveLength(0);
   });
 
   it("starts the chosen lesson and closes", () => {

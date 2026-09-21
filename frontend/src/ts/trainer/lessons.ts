@@ -361,7 +361,15 @@ export function bigramTable(words: string[], allowed: string[]): Bigrams {
     if (first !== undefined && letters.has(first)) {
       starts[first] = (starts[first] ?? 0) + 1;
     }
-    if (last !== undefined && letters.has(last)) add(last, wordEnd);
+    const beforeLast = chars[chars.length - 2];
+    if (
+      last !== undefined &&
+      beforeLast !== undefined &&
+      letters.has(last) &&
+      letters.has(beforeLast)
+    ) {
+      add(last, wordEnd);
+    }
     for (let i = 1; i < chars.length; i++) {
       const from = chars[i - 1] as string;
       const to = chars[i] as string;
@@ -505,6 +513,7 @@ function pseudoWord(
   symbols: string[],
   fresh: Set<string>,
   options: WordOptions,
+  bigramsOf: () => Bigrams,
 ): string {
   const length =
     options.minLength +
@@ -518,7 +527,7 @@ function pseudoWord(
     : 0;
 
   const letterCount = length - symbolCount;
-  const bigrams = options.bigrams;
+  const bigrams = letterCount === 0 ? undefined : bigramsOf();
   let word =
     bigrams === undefined || bigrams.pairs < minBigrams
       ? undefined
@@ -530,6 +539,14 @@ function pseudoWord(
           options.minLength,
           options.random,
         );
+  // a start letter whose continuations are all outside the lesson dead-ends the
+  // walk after one character, under the floor every real word has to clear
+  if (
+    word !== undefined &&
+    word.length < Math.min(letterCount, options.minLength)
+  ) {
+    word = undefined;
+  }
   word ??= alternatingWord(letters, fresh, letterCount, options.random);
   for (let i = 0; i < symbolCount; i++) {
     word += pickWeighted(symbols, fresh, options.random);
@@ -555,7 +572,11 @@ export function buildLessonWords(
   overrides: Partial<WordOptions> = {},
 ): string[] {
   const options = { ...defaultWordOptions, ...overrides };
-  options.bigrams ??= bigramTable(realWords, chars.allowed);
+  // the ladder almost never reaches a filler, and the table costs a pass over
+  // the whole corpus, so it is built on the first draw rather than every call
+  let table = options.bigrams;
+  const bigramsOf = (): Bigrams =>
+    (table ??= bigramTable(realWords, chars.allowed));
   const allowed = new Set(chars.allowed);
   const fresh = new Set(chars.fresh);
   const freshSymbols = chars.fresh.filter((char) => !isLetter(char));
@@ -604,7 +625,7 @@ export function buildLessonWords(
       (real.length >= options.minReal || options.random() < 0.3);
     const word = useReal
       ? (drawReal() ?? "")
-      : pseudoWord(letters, freshSymbols, fresh, options);
+      : pseudoWord(letters, freshSymbols, fresh, options, bigramsOf);
     if (word === "") break;
     words.push(word);
   }
@@ -613,7 +634,7 @@ export function buildLessonWords(
   const isUpper = (char: string): boolean =>
     isLetter(char) && lower(char) !== char;
   const pseudoWith = (char: string): string => {
-    const pseudo = pseudoWord(letters, freshSymbols, fresh, options);
+    const pseudo = pseudoWord(letters, freshSymbols, fresh, options, bigramsOf);
     if (isUpper(char)) return char + lower(pseudo.slice(1));
     if (pseudo.includes(char)) return pseudo;
     const at = Math.floor(options.random() * (pseudo.length + 1));
@@ -1029,6 +1050,54 @@ export function unlockStatus(
   };
 }
 
+export function latestAttempt(
+  attempts: Attempt[],
+  lesson: string,
+  layout: string,
+): Attempt | undefined {
+  return attemptsOf(attempts, lesson, layout).pop();
+}
+
+/**
+ * The one sentence that names what is holding the lesson, read by the result
+ * card, the lesson map and the picker so all three say the same thing.
+ */
+export function unlockBlocker(
+  status: UnlockStatus,
+  latest: Attempt | undefined,
+  criteria: UnlockCriteria,
+  lesson: Lesson,
+  layout: LayoutObject | undefined,
+): string {
+  if (status.ok) return "";
+  const legend = (key: WeakKey): string =>
+    (layout === undefined
+      ? undefined
+      : lessonKeyLegend(lesson, key.keycode, layout)) ?? key.keycode;
+  const accLine =
+    latest === undefined
+      ? undefined
+      : `accuracy ${Math.floor(latest.acc)}%, ${status.accShort} short of ${criteria.minAcc}%`;
+  if (status.phase === "speed") {
+    if (status.wpmShort > 0 && latest !== undefined) {
+      return `speed phase: ${Math.round(latest.wpm)} wpm, ${status.wpmShort} short of ${criteria.minWpm}`;
+    }
+    if (status.accShort > 0 && accLine !== undefined) {
+      return `speed phase: ${accLine}`;
+    }
+    return "speed phase: pass once more to unlock";
+  }
+  if (status.accShort > 0 && accLine !== undefined) {
+    return `accuracy phase: ${accLine}`;
+  }
+  const weak = status.weakKeys[0];
+  if (weak === undefined) return "accuracy phase";
+  if (weak.samples < weak.required) {
+    return `accuracy phase: ${legend(weak)} needs ${weak.required - weak.samples} more samples`;
+  }
+  return `accuracy phase: ${legend(weak)} errs ${Math.round((weak.errors / weak.samples) * 100)}%, bar ${masteryErrorRate * 100}%`;
+}
+
 export function canUnlock(
   attempts: Attempt[],
   lesson: string,
@@ -1058,8 +1127,9 @@ function layoutEntry(layout: string): LayoutProgress {
   return progress().layouts[layout] ?? emptyLayoutProgress();
 }
 
-// an id the list no longer knows falls back to the first lesson
-function indexOf(id: string): number {
+// a read has to land somewhere, so an id the list no longer knows reads as the
+// first lesson; a writer calls lessonIndex and decides what -1 means itself
+function indexOrFirst(id: string): number {
   return Math.max(0, lessonIndex(id));
 }
 
@@ -1078,11 +1148,14 @@ function nearestAvailable(index: number, layoutName: string): number {
 
 export function currentLesson(): number {
   const layoutName = progressLayout();
-  return nearestAvailable(indexOf(layoutEntry(layoutName).current), layoutName);
+  return nearestAvailable(
+    indexOrFirst(layoutEntry(layoutName).current),
+    layoutName,
+  );
 }
 
 export function unlockedUpTo(): number {
-  return indexOf(layoutEntry(progressLayout()).unlocked);
+  return indexOrFirst(layoutEntry(progressLayout()).unlocked);
 }
 
 export function bestOf(id: string): number | undefined {
@@ -1101,23 +1174,43 @@ function updateLayout(
     : { ...current, layouts: { ...current.layouts, [layout]: next } };
 }
 
-function unlockedAfterSync(
+function earnedUpTo(
   attempts: Attempt[],
   layout: string,
-  unlocked: string,
   criteria: UnlockCriteria,
-): string {
-  let next = indexOf(unlocked);
+  from: number,
+): number {
+  let next = from;
   for (;;) {
     const following = nextLesson(next, layout);
     if (
       following === undefined ||
       !unlockStatus(attempts, (LESSONS[next] as Lesson).id, layout, criteria).ok
     ) {
-      return (LESSONS[next] as Lesson).id;
+      return next;
     }
     next = following;
   }
+}
+
+/**
+ * Walking from the stored pointer is what keeps the sync forward-only. An id
+ * the list cannot resolve would seed that walk with lesson 0 and persist it,
+ * destroying the unlock.
+ */
+function unlockedAfterSync(
+  attempts: Attempt[],
+  layout: string,
+  unlocked: string,
+  criteria: UnlockCriteria,
+): string {
+  const stored = lessonIndex(unlocked);
+  if (stored !== -1) {
+    const walked = earnedUpTo(attempts, layout, criteria, stored);
+    return (LESSONS[walked] as Lesson).id;
+  }
+  const earned = earnedUpTo(attempts, layout, criteria, 0);
+  return earned === 0 ? unlocked : (LESSONS[earned] as Lesson).id;
 }
 
 /**
@@ -1180,7 +1273,7 @@ export function recordAttempt(attempt: Attempt): boolean {
       unlockedNow =
         next !== undefined &&
         following !== undefined &&
-        indexOf(entry.unlocked) < next &&
+        indexOrFirst(entry.unlocked) < next &&
         unlockStatus(
           attempts,
           attempt.lesson,
