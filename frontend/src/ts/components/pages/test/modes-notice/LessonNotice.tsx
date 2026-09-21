@@ -1,7 +1,7 @@
 import { createMemo } from "solid-js";
 
 import { getConfig } from "../../../../config/store";
-import { navigate } from "../../../../controllers/route-controller";
+import { showModal } from "../../../../states/modals";
 import { inputLayoutObject } from "../../../../states/test";
 import {
   bestOf,
@@ -46,7 +46,7 @@ export function LessonNotice() {
     <Notice
       when={text() !== ""}
       icon="fa-graduation-cap"
-      onClick={() => void navigate("/trainer")}
+      onClick={() => showModal("lessonPicker")}
       text={text()}
     />
   );

@@ -1,4 +1,5 @@
 import { navigate } from "../../controllers/route-controller";
+import { showModal } from "../../states/modals";
 import { showSuccessNotification } from "../../states/notifications";
 import { inputLayoutObject, isTestActive } from "../../states/test";
 import * as TestLogic from "../../test/test-logic";
@@ -93,6 +94,15 @@ const commands: Command[] = [
     icon,
     available: notDuringTest,
     subgroup: lessonList,
+  },
+  {
+    id: "trainerPick",
+    display: "Trainer: pick lesson",
+    alias: "map modal picker",
+    icon,
+    available: notDuringTest,
+    opensModal: true,
+    exec: (): void => showModal("lessonPicker"),
   },
   {
     id: "trainerDrill",

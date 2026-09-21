@@ -15,8 +15,10 @@ does work`. Decisions that shaped it are in
   card, indicator, toast and commandline all read them. `resolveLayoutName`
   maps "default" to the real keymap layout.
 - The chip from LessonNotice.tsx names the active lesson, its best and the
-  target the phase asks for; LessonResultCard.tsx prints the shortfall or the
-  unlock with retry and next; the unlock toast lives in trainer/index.ts.
+  target the phase asks for, and opens LessonPickerModal.tsx, which lists the
+  lessons of the current layout with the `lessonState` the trainer page reads.
+  LessonResultCard.tsx prints the shortfall or the unlock with retry and next;
+  the unlock toast lives in trainer/index.ts.
 - Key stats keep speed apart from errors: `emaMs` takes only correct,
   non-recovery samples with pauses capped at three times the average, `errRate`
   is its own moving average, and deletes advance the clock. Shift is folded
@@ -114,12 +116,12 @@ does work`. Decisions that shaped it are in
     `pseudoWord`, shared through `WordOptions.bigrams`. It reaches the drill and
     the quota pass; the home row stays on the fallback, under fifty pairs, and
     the later lessons draw enough real words to need no filler.
+24. trainer-page, the picker. `feat(trainer): trainer-page, pick a lesson from
+    a modal`: LessonPickerModal.tsx behind the chip and a command, over a
+    shared `lessonState`.
 
 ## Open
 
-- The picker modal. Switch lessons without leaving the test screen, from the
-  chip and from a command. A command that opens a modal needs `opensModal`, or
-  the commandline wipes the chain on exec.
 - Warm-up and review. A zero-decision 30 second start over every unlocked
   character, and a session on the keys that went backwards. Neither may record
   a lesson attempt, and the chip stays hidden through both.
