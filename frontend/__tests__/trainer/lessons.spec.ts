@@ -18,6 +18,7 @@ import {
   LESSON_IDS_V2,
   lessonKeycodes,
   lessonKeyLegend,
+  Lesson,
   lessonName,
   lessonNumber,
   LESSONS,
@@ -33,6 +34,7 @@ import {
   resetProgress,
   setCurrentLesson,
   trimAttempts,
+  unlockBlocker,
   unlockedUpTo,
   unlockStatus,
   UnlockStatus,
@@ -1239,6 +1241,123 @@ describe("lessons", () => {
         accShort: 0,
         weakKeys: [],
       });
+    });
+  });
+
+  describe("unlockBlocker", () => {
+    const lesson = LESSONS[lessonIndex("e-i")] as Lesson;
+    const status = (over: Partial<UnlockStatus> = {}): UnlockStatus => ({
+      ok: false,
+      phase: "accuracy",
+      wpmShort: 0,
+      accShort: 0,
+      weakKeys: [],
+      ...over,
+    });
+    const attempt = (over: Partial<Attempt> = {}): Attempt => ({
+      lesson: "e-i",
+      layout: "qwerty",
+      wpm: 27,
+      acc: 95,
+      perKey: {},
+      ts: 0,
+      ...over,
+    });
+    const blocker = (
+      over: Partial<UnlockStatus>,
+      latest: Attempt = attempt(),
+    ): string =>
+      unlockBlocker(status(over), latest, defaultCriteria, lesson, qwerty);
+
+    it("says nothing once the lesson is passed", () => {
+      expect(blocker({ ok: true, phase: "speed" })).toBe("");
+    });
+
+    it("names the wpm shortfall in the speed phase", () => {
+      expect(blocker({ phase: "speed", wpmShort: 3 })).toBe(
+        "speed phase: 27 wpm, 3 short of 30",
+      );
+    });
+
+    it("names the accuracy shortfall in the speed phase once the speed holds", () => {
+      expect(
+        blocker({ phase: "speed", accShort: 2 }, attempt({ wpm: 40 })),
+      ).toBe("speed phase: accuracy 95%, 2 short of 97%");
+    });
+
+    it("asks for one more pass when nothing is short in the speed phase", () => {
+      expect(blocker({ phase: "speed" }, attempt({ wpm: 40, acc: 99 }))).toBe(
+        "speed phase: pass once more to unlock",
+      );
+    });
+
+    it("names the accuracy shortfall in the accuracy phase", () => {
+      expect(blocker({ accShort: 2 })).toBe(
+        "accuracy phase: accuracy 95%, 2 short of 97%",
+      );
+    });
+
+    it("names the weakest key and the samples it still needs", () => {
+      expect(
+        blocker(
+          {
+            weakKeys: [
+              { keycode: "KeyI", samples: 8, errors: 0, required: 20 },
+            ],
+          },
+          attempt({ acc: 99 }),
+        ),
+      ).toBe("accuracy phase: i needs 12 more samples");
+    });
+
+    it("names the weakest key error share once it has the samples", () => {
+      expect(
+        blocker(
+          {
+            weakKeys: [
+              { keycode: "KeyI", samples: 25, errors: 2, required: 20 },
+            ],
+          },
+          attempt({ acc: 99 }),
+        ),
+      ).toBe("accuracy phase: i errs 8%, bar 3%");
+    });
+
+    it("skips the accuracy shortfall before any attempt", () => {
+      expect(
+        unlockBlocker(
+          status({
+            accShort: 97,
+            weakKeys: [
+              { keycode: "KeyI", samples: 0, errors: 0, required: 20 },
+            ],
+          }),
+          undefined,
+          defaultCriteria,
+          lesson,
+          qwerty,
+        ),
+      ).toBe("accuracy phase: i needs 20 more samples");
+    });
+
+    it("falls back to the keycode without a layout", () => {
+      expect(
+        unlockBlocker(
+          status({
+            weakKeys: [
+              { keycode: "KeyI", samples: 0, errors: 0, required: 20 },
+            ],
+          }),
+          attempt({ acc: 99 }),
+          defaultCriteria,
+          lesson,
+          undefined,
+        ),
+      ).toBe("accuracy phase: KeyI needs 20 more samples");
+    });
+
+    it("says only the phase when nothing is short and no key is weak", () => {
+      expect(blocker({}, attempt({ acc: 99 }))).toBe("accuracy phase");
     });
   });
 

@@ -4,7 +4,11 @@ import { navigate } from "../../controllers/route-controller";
 import { hideModalAndClearChain } from "../../states/modals";
 import { inputLayoutObject } from "../../states/test";
 import { beginLesson } from "../../trainer/actions";
-import { LessonState, lessonState } from "../../trainer/lesson-state";
+import {
+  lessonBlocker,
+  LessonState,
+  lessonState,
+} from "../../trainer/lesson-state";
 import {
   bestOf,
   Lesson,
@@ -39,6 +43,11 @@ export function LessonPickerModal(): JSXElement {
             const state = (): LessonState => lessonState(index);
             const locked = (): boolean => state() === "locked";
             const best = (): number | undefined => bestOf(lesson.id);
+            const subClass = (): string =>
+              cn("text-sub", {
+                "group-hover:text-bg": !locked(),
+                "text-bg": state() === "active",
+              });
             return (
               <button
                 type="button"
@@ -46,7 +55,7 @@ export function LessonPickerModal(): JSXElement {
                 data-testid="lessonPickerRow"
                 data-lesson-state={state()}
                 class={cn(
-                  "grid grid-cols-[2rem_1fr_auto] items-center gap-4 rounded bg-sub-alt px-4 py-3 text-left text-text transition-colors duration-125",
+                  "group grid grid-cols-[2rem_1fr_auto] items-center gap-4 rounded bg-sub-alt px-4 py-3 text-left text-text transition-colors duration-125",
                   {
                     "cursor-pointer hover:bg-text hover:text-bg": !locked(),
                     "cursor-default opacity-50": locked(),
@@ -59,7 +68,19 @@ export function LessonPickerModal(): JSXElement {
                 }}
               >
                 <span>{lessonNumber(index, progressLayout())}</span>
-                <span>{lessonName(lesson, inputLayoutObject())}</span>
+                <span class="grid justify-items-start gap-1">
+                  <span>{lessonName(lesson, inputLayoutObject())}</span>
+                  <Show when={lessonBlocker(index, inputLayoutObject())}>
+                    {(text) => (
+                      <span
+                        data-testid="lessonBlocker"
+                        class={cn("text-xs", subClass())}
+                      >
+                        {text()}
+                      </span>
+                    )}
+                  </Show>
+                </span>
                 <span class="text-sm">
                   <Show when={best()} fallback={state()}>
                     {(wpm) => <>best {Math.round(wpm())}</>}

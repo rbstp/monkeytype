@@ -19,6 +19,11 @@ does work`. Decisions that shaped it are in
   lessons of the current layout with the `lessonState` the trainer page reads.
   LessonResultCard.tsx prints the shortfall or the unlock with retry and next;
   the unlock toast lives in trainer/index.ts.
+- `unlockBlocker` beside `unlockStatus` builds the one sentence naming what is
+  holding a lesson: the weakest key and what it needs, or the wpm shortfall in
+  the speed phase. The result card reads it, and `lessonBlocker` beside
+  `lessonState` feeds it to the map row and the picker row of the lesson being
+  practised, and to no other row. Nothing short means no sentence.
 - Key stats keep speed apart from errors: `emaMs` takes only correct,
   non-recovery samples with pauses capped at three times the average, `errRate`
   is its own moving average, and deletes advance the clock. Shift is folded
@@ -144,6 +149,9 @@ does work`. Decisions that shaped it are in
     unlock-integrity, repair a lost unlock pointer instead of resetting it`:
     `indexOrFirst` stays the fail-safe read, `unlockedAfterSync` rebuilds an
     unreadable pointer from the attempts and never persists lesson 1 over it.
+29. unlock-legibility, say what is holding the lesson. `feat(trainer):
+    unlock-legibility, name the blocker on the map and in the picker`:
+    `unlockBlocker` is extracted from the result card and read by all three.
 
 ## Open
 

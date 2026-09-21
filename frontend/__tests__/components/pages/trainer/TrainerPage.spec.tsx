@@ -249,6 +249,42 @@ describe("TrainerPage", () => {
     expect(map[1]).not.toBeDisabled();
   });
 
+  it("shows what is holding the current lesson on its row and on no other", () => {
+    replaceProgress({
+      version: 3,
+      layouts: { qwerty: { current: "e-i", unlocked: "e-i", best: {} } },
+      attempts: [attempt("e-i", 40, 99)],
+    });
+    render(() => <TrainerPage />);
+    const blockers = screen.getAllByTestId("lessonBlocker");
+    expect(blockers).toHaveLength(1);
+    expect(blockers[0]).toHaveTextContent(
+      "accuracy phase: e needs 20 more samples",
+    );
+    const map = screen
+      .getAllByRole("button")
+      .filter((button) => button.hasAttribute("data-lesson-state"));
+    expect(map[1]).toContainElement(blockers[0] as HTMLElement);
+  });
+
+  it("says nothing on the map when the current lesson has nothing short", () => {
+    replaceProgress({
+      version: 3,
+      layouts: { qwerty: { current: "e-i", unlocked: "e-i", best: {} } },
+      attempts: [
+        {
+          ...attempt("e-i", 40, 99),
+          perKey: {
+            KeyE: { total: 20, errors: 0 },
+            KeyI: { total: 20, errors: 0 },
+          },
+        },
+      ],
+    });
+    render(() => <TrainerPage />);
+    expect(screen.queryAllByTestId("lessonBlocker")).toHaveLength(0);
+  });
+
   it("names the lessons by the legends of the input layout", () => {
     vi.spyOn(TestState, "inputLayoutObject").mockReturnValue(dvorak);
     replaceProgress({

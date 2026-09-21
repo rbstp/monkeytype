@@ -1029,6 +1029,54 @@ export function unlockStatus(
   };
 }
 
+export function latestAttempt(
+  attempts: Attempt[],
+  lesson: string,
+  layout: string,
+): Attempt | undefined {
+  return attemptsOf(attempts, lesson, layout).pop();
+}
+
+/**
+ * The one sentence that names what is holding the lesson, read by the result
+ * card, the lesson map and the picker so all three say the same thing.
+ */
+export function unlockBlocker(
+  status: UnlockStatus,
+  latest: Attempt | undefined,
+  criteria: UnlockCriteria,
+  lesson: Lesson,
+  layout: LayoutObject | undefined,
+): string {
+  if (status.ok) return "";
+  const legend = (key: WeakKey): string =>
+    (layout === undefined
+      ? undefined
+      : lessonKeyLegend(lesson, key.keycode, layout)) ?? key.keycode;
+  const accLine =
+    latest === undefined
+      ? undefined
+      : `accuracy ${Math.floor(latest.acc)}%, ${status.accShort} short of ${criteria.minAcc}%`;
+  if (status.phase === "speed") {
+    if (status.wpmShort > 0 && latest !== undefined) {
+      return `speed phase: ${Math.round(latest.wpm)} wpm, ${status.wpmShort} short of ${criteria.minWpm}`;
+    }
+    if (status.accShort > 0 && accLine !== undefined) {
+      return `speed phase: ${accLine}`;
+    }
+    return "speed phase: pass once more to unlock";
+  }
+  if (status.accShort > 0 && accLine !== undefined) {
+    return `accuracy phase: ${accLine}`;
+  }
+  const weak = status.weakKeys[0];
+  if (weak === undefined) return "accuracy phase";
+  if (weak.samples < weak.required) {
+    return `accuracy phase: ${legend(weak)} needs ${weak.required - weak.samples} more samples`;
+  }
+  return `accuracy phase: ${legend(weak)} errs ${Math.round((weak.errors / weak.samples) * 100)}%, bar ${masteryErrorRate * 100}%`;
+}
+
 export function canUnlock(
   attempts: Attempt[],
   lesson: string,

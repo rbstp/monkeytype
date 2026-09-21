@@ -6,18 +6,17 @@ import { getLastResult, inputLayoutObject } from "../../../states/test";
 import { beginLesson } from "../../../trainer/actions";
 import {
   criteriaFor,
+  latestAttempt,
   Lesson,
-  lessonKeyLegend,
   lessonName,
   lessonNumber,
   LESSONS,
-  masteryErrorRate,
   nextLesson,
   progress,
   progressLayout,
+  unlockBlocker,
   unlockedUpTo,
   unlockStatus,
-  WeakKey,
 } from "../../../trainer/lessons";
 import { getActiveLesson } from "../../../trainer/session";
 import { Button } from "../../common/Button";
@@ -32,16 +31,6 @@ export function LessonResultCard(): JSXElement {
       ? undefined
       : { index, lesson };
   });
-
-  const legend = (key: WeakKey): string => {
-    const layout = inputLayoutObject();
-    const lesson = active()?.lesson;
-    const label =
-      layout === undefined || lesson === undefined
-        ? undefined
-        : lessonKeyLegend(lesson, key.keycode, layout);
-    return label ?? key.keycode;
-  };
 
   const next = (): number | undefined => {
     const current = active();
@@ -59,12 +48,7 @@ export function LessonResultCard(): JSXElement {
     const criteria = criteriaFor(getConfig.trainerUnlock);
     const layout = progressLayout();
     const attempts = progress().attempts;
-    const latest = attempts
-      .filter(
-        (attempt) =>
-          attempt.lesson === current.lesson.id && attempt.layout === layout,
-      )
-      .pop();
+    const latest = latestAttempt(attempts, current.lesson.id, layout);
     if (latest === undefined || latest.ts < result.timestamp) {
       return "attempt not recorded";
     }
@@ -76,21 +60,13 @@ export function LessonResultCard(): JSXElement {
         ? "lesson passed"
         : `lesson ${lessonNumber(index, layout)} unlocked: ${lessonName(following, inputLayoutObject())}`;
     }
-    const accLine = `accuracy ${Math.floor(latest.acc)}%, ${status.accShort} short of ${criteria.minAcc}%`;
-    if (status.phase === "speed") {
-      if (status.wpmShort > 0) {
-        return `speed phase: ${Math.round(latest.wpm)} wpm, ${status.wpmShort} short of ${criteria.minWpm}`;
-      }
-      if (status.accShort > 0) return `speed phase: ${accLine}`;
-      return "speed phase: pass once more to unlock";
-    }
-    if (status.accShort > 0) return `accuracy phase: ${accLine}`;
-    const weak = status.weakKeys[0];
-    if (weak === undefined) return "accuracy phase";
-    if (weak.samples < weak.required) {
-      return `accuracy phase: ${legend(weak)} needs ${weak.required - weak.samples} more samples`;
-    }
-    return `accuracy phase: ${legend(weak)} errs ${Math.round((weak.errors / weak.samples) * 100)}%, bar ${masteryErrorRate * 100}%`;
+    return unlockBlocker(
+      status,
+      latest,
+      criteria,
+      current.lesson,
+      inputLayoutObject(),
+    );
   });
 
   return (
