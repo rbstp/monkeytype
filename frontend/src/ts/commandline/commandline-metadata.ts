@@ -698,6 +698,12 @@ export const commandlineConfigMetadata: CommandlineConfigMetadataObject = {
     },
     alias: "keyboard finger hand",
   },
+  keymapHeat: {
+    subgroup: {
+      options: "fromSchema",
+    },
+    alias: "keyboard heatmap trainer slow error",
+  },
 
   //themes
   customTheme: {

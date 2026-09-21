@@ -2,6 +2,7 @@ import { LayoutObject } from "@monkeytype/schemas/layouts";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 
 import { getConfig } from "../../../config/store";
+import { Keycode } from "../../../constants/keys";
 import { showCommandLineForConfig } from "../../../states/core";
 import { getModifierState, isCapsLockOn } from "../../../states/modifiers";
 import {
@@ -21,9 +22,12 @@ import {
   HOME_KEYS,
   shiftFingerFor,
 } from "../../../trainer/finger";
+import { heatColors } from "../../../trainer/heat";
+import { getLayoutStats, layoutStatsName } from "../../../trainer/key-stats";
 import { tracksNextKey } from "../../../trainer/session";
 import { cn } from "../../../utils/cn";
 import { keycodeToLayoutKey } from "../../../utils/key-converter";
+import { resolveLayoutName } from "../../../utils/layout-name";
 import { isMacLike } from "../../../utils/misc";
 import { Anime } from "../../common/anime";
 import { Button } from "../../common/Button";
@@ -114,6 +118,19 @@ function Keyboard(props: { displayName: string; layoutData: LayoutObject }) {
       : `${FINGER_LABEL[finger]} + ${FINGER_LABEL[shift]} shift`;
   });
 
+  const heat = createMemo(() =>
+    heatColors(
+      getLayoutStats(
+        layoutStatsName(
+          resolveLayoutName(getConfig.layout, getConfig.keymapLayout),
+          getConfig.funbox,
+        ),
+      ),
+      isSteno() ? "off" : getConfig.keymapHeat,
+      getTheme(),
+    ),
+  );
+
   const restLabel = createMemo(() => {
     if (getConfig.keymapFingerColors === "off" || isSteno()) return undefined;
     const legends = HOME_KEYS.map(
@@ -133,6 +150,7 @@ function Keyboard(props: { displayName: string; layoutData: LayoutObject }) {
           layer={layer()}
           showFirstRow={showFirstRow()}
           flashState={getKeymapFlashState}
+          heat={heat()}
         />
       </Show>
       <Show when={restLabel()}>
@@ -150,6 +168,7 @@ function KeyboardDefinitionRenderer(props: {
   layer: { index: number; symbolIndex?: number };
   showFirstRow: boolean;
   flashState: Record<string, FlashEntry | undefined>;
+  heat: Partial<Record<Keycode, string>>;
 }) {
   return (
     <div
@@ -191,8 +210,17 @@ function KeyboardDefinitionRenderer(props: {
                     key.legends
                       .map((legend) => props.flashState[legend])
                       .find((it) => it !== undefined);
+                  const heat = (): string | undefined =>
+                    key.keycode === undefined
+                      ? undefined
+                      : props.heat[key.keycode];
                   return (
-                    <Key {...key} label={label()} flashEntry={flashEntry} />
+                    <Key
+                      {...key}
+                      label={label()}
+                      flashEntry={flashEntry}
+                      heat={heat()}
+                    />
                   );
                 }}
               </For>
@@ -208,6 +236,8 @@ function Key(
   props: {
     label: string;
     flashEntry: () => FlashEntry | undefined;
+    /** ring colour from the trainer heatmap, the fill stays with the finger */
+    heat?: string;
   } & KeyDefinition,
 ) {
   // Steno keys never flash.
@@ -323,6 +353,7 @@ function Key(
         width: `${(props.width ?? 1) * 2}rem`,
         "margin-left": `${(props.x ?? 0) * 2}rem`,
         "margin-top": `${(props.y ?? 0) * 2}rem`,
+        ...(props.heat === undefined ? {} : { "border-color": props.heat }),
         transform:
           props.rotation !== undefined ? `rotate(${props.rotation}deg)` : "",
         "background-color": "var(--keybgcolor)",

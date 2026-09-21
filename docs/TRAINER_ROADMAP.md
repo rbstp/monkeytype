@@ -167,7 +167,7 @@ Weak keys are tinted on the keymap you watch while typing. Finger and row cluste
 
 Key already layers idle colours, highlight and flash. Plumb keycode through KeyDefinition and add a config key via the finger-colours checklist. The reviewer cut the hands diagram and put heat on the border ring so finger shades stay visible.
 
-First slice: keycode plumbing, an off/speed config, a border tint.
+First slice landed in `feat(trainer): keymap-visuals, the heatmap`: `KeyDefinition.keycode` set in keymapConverter.ts (the layout indicator key is Space), a `keymapHeat` config key beside the other keymap keys in the appearance group (`"off" | "speed" | "errors"`, default off, through the schemas package, metadata, defaults, commandline metadata and list, and the settings page; it turns the keymap on like finger colours do), and `heatColors` in trainer/heat.ts: a ring colour from theme.sub to theme.error for keys with at least five timed samples in speed mode (emaMs between the layout's 20th and 80th percentile) or five samples in errors mode (errRate from 0 to 15%). Key in Keymap.tsx tints the border, not the fill, so finger shades stay visible; stats come from getLayoutStats over the reactive getConfig like the weak-keys panel. The backend validates config through the schemas package, so both docker images must be rebuilt with monkeybuild before the config PATCH accepts the key.
 
 Risk: both images must rebuild together or the config PATCH 422s.
 
@@ -228,7 +228,7 @@ Later, the French goal and the rest:
 16. pairwise-stats: confusion pairs, then bigram transitions. Confusions done in `feat(trainer): pairwise-stats, confusion pairs`; transitions are still open.
 17. adaptive-words: weak-key weighting and mid-lesson rebuilds. Done in `feat(trainer): adaptive-words, weak-key weighting and mid-lesson rebuilds`.
 18. mastery-and-phases: speed and accuracy phases. Done in `feat(trainer): mastery-and-phases, accuracy phase then speed phase`.
-19. keymap-visuals: the heatmap.
+19. keymap-visuals: the heatmap. Done in `feat(trainer): keymap-visuals, the heatmap`; rebuild both images with monkeybuild before the config PATCH accepts `keymapHeat`.
 20. progress-dashboard: key history and deltas.
 
 Now fixes what every later feature reads and gives the trainer its home. Next puts surfaces on data that is honest. Later needs the new data model and the layout work.

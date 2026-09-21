@@ -21,7 +21,9 @@ function convertLayoutToKeymap(
   ...args: Parameters<typeof convertWithFingers>
 ): KeyboardDefinition {
   return convertWithFingers(...args).map((row) =>
-    row.map(({ finger: _finger, isHomeKey: _home, ...key }) => key),
+    row.map(
+      ({ finger: _finger, isHomeKey: _home, keycode: _keycode, ...key }) => key,
+    ),
   );
 }
 
@@ -135,6 +137,20 @@ describe("keymap converter", () => {
           "RP",
         ]);
         expect(row5?.[0]?.finger).toEqual("thumb");
+        expect(row3?.map((key) => key.keycode)).toEqual([
+          "KeyA",
+          "KeyS",
+          "KeyD",
+          "KeyF",
+          "KeyG",
+          "KeyH",
+          "KeyJ",
+          "KeyK",
+          "KeyL",
+          "Semicolon",
+          "Quote",
+        ]);
+        expect(row5?.[0]?.keycode).toEqual("Space");
         expect(row3?.map((key) => key.isHomeKey === true)).toEqual([
           true,
           true,

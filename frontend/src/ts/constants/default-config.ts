@@ -61,6 +61,7 @@ const obj: Config = {
   keymapKeys: "minimal",
   keymapSize: 1,
   keymapFingerColors: "off",
+  keymapHeat: "off",
   fontFamily: "Roboto_Mono",
   smoothLineScroll: false,
   alwaysShowDecimalPlaces: false,
