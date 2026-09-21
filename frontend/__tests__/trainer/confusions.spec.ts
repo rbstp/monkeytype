@@ -6,6 +6,7 @@ import {
   LayoutConfusions,
   minConfusions,
   recordConfusions,
+  replaceConfusions,
   resetConfusions,
   worstConfusions,
 } from "../../src/ts/trainer/confusions";
@@ -125,6 +126,25 @@ describe("confusions", () => {
       expect(getLayoutConfusions("colemak")).toEqual({});
       resetConfusions();
       expect(getLayoutConfusions("qwerty")).toEqual({});
+    });
+
+    it("caps an imported row at the eight most frequent, counts intact", () => {
+      resetConfusions();
+      const row: Record<string, number> = {};
+      for (let i = 0; i < 12; i++) row[`Key${i}`] = 100 - i;
+      replaceConfusions({ version: 1, layouts: { qwerty: { KeyD: row } } });
+      const kept = getLayoutConfusions("qwerty")["KeyD"] ?? {};
+      expect(Object.keys(kept)).toEqual([
+        "Key0",
+        "Key1",
+        "Key2",
+        "Key3",
+        "Key4",
+        "Key5",
+        "Key6",
+        "Key7",
+      ]);
+      expect(kept["Key0"]).toBe(100);
     });
   });
 });

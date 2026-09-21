@@ -80,11 +80,16 @@ does work`. Decisions that shaped it are in
   `isLessonText` accepts the target words.
 - Progress v3 stores lesson ids per layout, so a split or an inserted lesson
   never moves an unlocked position; v1 and v2 migrate through the localStorage
-  hook and on backup import. It keeps 1000 attempts, at most 50 per lesson and
-  layout, and a best per lesson that trimming never evicts; an import is
-  trimmed to those caps as it lands, so no stored list outruns them. Key stats
-  do the same. `exportBackupFile` and `importBackupFile` carry version 6: key
-  stats, progress, confusions, transitions and the key history.
+  hook and on backup import, and key stats migrate the same way. It keeps 1000
+  attempts, at most 50 per lesson and layout, and a best per lesson that
+  trimming never evicts. `replaceProgress` applies those caps to the list an
+  import carries, and `replaceConfusions` and `replaceTransitions` apply theirs
+  (8 typed per key, 12 next per key), so a blob written by another build cannot
+  seed a store past its own caps; the key history is stored as it comes, since
+  `withSnapshot` prunes past `keptDays` on the next snapshot and dropping those
+  days at import would only lose them sooner. Key stats hold no capped list.
+  `exportBackupFile` and `importBackupFile` carry version 6: key stats,
+  progress, confusions, transitions and the key history.
 - An id the list cannot resolve still reads as the first lesson, since a read
   has to land somewhere, but `unlockedAfterSync` no longer writes that reading
   back. It walks the attempts from the first lesson through `unlockStatus` and
@@ -92,10 +97,12 @@ does work`. Decisions that shaped it are in
   is repaired to what was earned rather than reset to lesson 1. A pointer that
   resolves is still walked forward only. `syncUnlocked` runs on every
   `fullConfigChangeFinished`, on every unlock change and on a backup import, so
-  it collects only the writes that replaced an unreadable id and says once per
-  page load which layout and lesson the pointer landed on. An import is its own
-  event: it re-arms that notice, so a blob that needs a repair is never
-  imported in silence. `recordAttempt` reads an unreadable id the same way
+  it collects only the writes that replaced an unreadable id and says which
+  layout and lesson the pointer landed on: once per page load, and once more
+  for each import that repairs something, since an import is its own event. An
+  import runs that sync before it trims, because the walk starts at the first
+  lesson and the total cap drops the oldest attempts, which are the ones the
+  early lessons rest on. `recordAttempt` reads an unreadable id the same way
   rather than through `indexOrFirst`, so the guarantee holds in one module
   instead of resting on the sync running first, and a pointer it rebuilds says
   so through the same notice.
@@ -217,12 +224,31 @@ does work`. Decisions that shaped it are in
     visited instead of counting, and the config-event sync and the single
     resolve of a `useLocalStorage` updater get the specs they were missing.
 
+37. review, what step 36 got wrong. `fix(trainer): review, repair before the
+    caps and cap the other imports`: the import syncs before it trims, so the
+    walk still sees the oldest attempts; the notice announces an import's own
+    repair without re-opening the page load's budget; confusions and
+    transitions apply their caps on import too; and the specs that did not
+    discriminate (the reachability totals, the trimmed baseline, the config
+    setter order) are replaced by ones that do.
+
 ## Open
 
-- `recordAttempt` trims the list it walks for its baseline as well as the one
-  it walks for the unlock, so both read the same attempts. Only a hand-seeded
-  store can outrun the caps now that an import trims, and no spec makes the two
-  walks disagree; the spec fences the boundary instead.
+- The localStorage load path stores what `upgradeProgress` returns without
+  trimming, so a migrated v1 blob can hold more than 50 attempts of one lesson
+  until the next `recordAttempt`. Trimming inside `migrate` would cost the
+  repair the same evidence the import path now protects, so the caps are left
+  to the first write instead.
+- `syncUnlocked` re-applies `trainerUnlock` but not `trainerWordsPerTest`,
+  which moves the mastery bar through `masterySamplesFor` just as much. A
+  listener on that key would read the store one change behind, since
+  `setConfig` dispatches before it writes the store, so a test length change
+  re-bars the stored attempts only at the next sync or attempt.
+- `useLocalStorage` runs the updater before `storage.set`, which can still be
+  refused (a full store, a schema failure). The signal keeps its old value but
+  what the updater collected has already escaped, so `recordAttempt` can report
+  an unlock that was never persisted. The specs pin the current behaviour; no
+  caller reads the setter's result yet.
 - The layout emulator has no dead-key state, so the French track works on the OS
   layout only. `lessonAvailable` hides it everywhere else; not planned to change.
 

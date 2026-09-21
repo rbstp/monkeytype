@@ -194,6 +194,13 @@ export function resetTransitions(): void {
   setTransitions(emptyTransitions());
 }
 
+// the cap lives on the record path, so an import applies it to what it carries
 export function replaceTransitions(data: Transitions): void {
-  setTransitions(data);
+  const layouts: Transitions["layouts"] = {};
+  for (const [layout, rows] of Object.entries(data.layouts)) {
+    const next: LayoutTransitions = {};
+    for (const [from, row] of Object.entries(rows)) next[from] = trimmed(row);
+    layouts[layout] = next;
+  }
+  setTransitions({ ...data, layouts });
 }

@@ -7,6 +7,7 @@ import {
   getLayoutTransitions,
   LayoutTransitions,
   recordTransitions,
+  replaceTransitions,
   resetTransitions,
   worstTransitions,
 } from "../../src/ts/trainer/transitions";
@@ -204,6 +205,18 @@ describe("transitions", () => {
       });
       resetTransitions();
       expect(getLayoutTransitions("qwerty")).toEqual({});
+    });
+
+    it("caps an imported row at the twelve most seen", () => {
+      const row: LayoutTransitions[string] = {};
+      for (let i = 0; i < 15; i++) {
+        row[`Key${i}`] = { emaMs: 200, count: 100 - i };
+      }
+      replaceTransitions({ version: 1, layouts: { qwerty: { KeyD: row } } });
+      const kept = getLayoutTransitions("qwerty")["KeyD"] ?? {};
+      expect(Object.keys(kept)).toHaveLength(12);
+      expect(kept["Key0"]).toEqual({ emaMs: 200, count: 100 });
+      expect(kept["Key12"]).toBeUndefined();
     });
   });
 });

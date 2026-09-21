@@ -77,6 +77,45 @@ describe("backup", () => {
     });
   });
 
+  it("applies every cap to the blob it imports", () => {
+    const row: Record<string, number> = {};
+    for (let i = 0; i < 12; i++) row[`Key${i}`] = 100 - i;
+    const pairs: Record<string, { emaMs: number; count: number }> = {};
+    for (let i = 0; i < 15; i++) {
+      pairs[`Key${i}`] = { emaMs: 200, count: 100 - i };
+    }
+    const json = JSON.stringify({
+      version: 6,
+      keyStats: { version: 2, layouts: {} },
+      progress: {
+        version: 3,
+        layouts: {
+          qwerty: { current: "home-row", unlocked: "home-row", best: {} },
+        },
+        attempts: Array.from({ length: 60 }, (_, ts) => ({
+          lesson: "home-row",
+          layout: "qwerty",
+          wpm: 20,
+          acc: 90,
+          perKey: {},
+          ts,
+        })),
+      },
+      confusions: { version: 1, layouts: { qwerty: { KeyD: row } } },
+      transitions: { version: 1, layouts: { qwerty: { KeyD: pairs } } },
+      keyHistory: { version: 1, layouts: {} },
+    });
+
+    expect(importBackup(json)).toBe(true);
+    expect(progress().attempts).toHaveLength(50);
+    expect(
+      Object.keys(getLayoutConfusions("qwerty")["KeyD"] ?? {}),
+    ).toHaveLength(8);
+    expect(
+      Object.keys(getLayoutTransitions("qwerty")["KeyD"] ?? {}),
+    ).toHaveLength(12);
+  });
+
   it("imports every earlier version and reads back as version 5", () => {
     const progressV3 = { version: 3, layouts: {}, attempts: [] };
     const versions = [

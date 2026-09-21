@@ -20,6 +20,12 @@ const maxTypedPerKey = 8;
 const decayAbove = 200;
 export const minConfusions = 3;
 
+function topTyped(row: Record<string, number>): [string, number][] {
+  return Object.entries(row)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, maxTypedPerKey);
+}
+
 function trimmed(row: Record<string, number>): Record<string, number> {
   let entries = Object.entries(row).sort(([, a], [, b]) => b - a);
   const total = entries.reduce((sum, [, count]) => sum + count, 0);
@@ -29,6 +35,19 @@ function trimmed(row: Record<string, number>): Record<string, number> {
       .filter(([, count]) => count > 0);
   }
   return Object.fromEntries(entries.slice(0, maxTypedPerKey));
+}
+
+// the cap lives on the record path, so an import applies it to what it carries
+function capped(data: Confusions): Confusions {
+  const layouts: Confusions["layouts"] = {};
+  for (const [layout, rows] of Object.entries(data.layouts)) {
+    const next: LayoutConfusions = {};
+    for (const [expected, row] of Object.entries(rows)) {
+      next[expected] = Object.fromEntries(topTyped(row));
+    }
+    layouts[layout] = next;
+  }
+  return { ...data, layouts };
 }
 
 // halving past 200 lets old habits fade instead of pruning them by a rule
@@ -157,5 +176,5 @@ export function resetConfusions(): void {
 }
 
 export function replaceConfusions(data: Confusions): void {
-  setConfusions(data);
+  setConfusions(capped(data));
 }

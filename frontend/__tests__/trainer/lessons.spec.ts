@@ -9,7 +9,11 @@ import {
   vi,
 } from "vitest";
 import { LayoutObject } from "@monkeytype/schemas/layouts";
-import { TrainerUnlock } from "@monkeytype/schemas/configs";
+import {
+  TrainerUnlock,
+  TrainerUnlockSchema,
+  TrainerWordsPerTestSchema,
+} from "@monkeytype/schemas/configs";
 import { setConfigStore } from "../../src/ts/config/store";
 import * as Notifications from "../../src/ts/states/notifications";
 import {
@@ -1678,6 +1682,18 @@ describe("lessons", () => {
       ts: 0,
     });
 
+    // attempts spread across twenty lessons of another layout, so they sit
+    // inside the per-lesson cap and only the total cap decides what is kept
+    const filler = (count: number): Attempt[] =>
+      Array.from({ length: count }, (_, i) => ({
+        lesson: (LESSONS[i % 20] as Lesson).id,
+        layout: "dvorak",
+        wpm: 10,
+        acc: 50,
+        perKey: {},
+        ts: i + 1,
+      }));
+
     beforeEach(() => {
       setConfigStore("layout", "default");
       setConfigStore("keymapLayout", "overrideSync");
@@ -1782,6 +1798,31 @@ describe("lessons", () => {
         expect(
           JSON.parse(localStorage.getItem("trainerProgress") ?? "{}").version,
         ).toBe(3);
+      });
+
+      it("leaves a migrated list over the caps for the next attempt to trim", async () => {
+        localStorage.setItem(
+          "trainerProgress",
+          JSON.stringify({
+            version: 1,
+            current: 0,
+            unlocked: 0,
+            attempts: Array.from({ length: 60 }, (_, ts) => ({
+              lesson: 0,
+              wpm: 20,
+              acc: 90,
+              perKey: {},
+              ts,
+            })),
+          }),
+        );
+        vi.resetModules();
+        const fresh = await import("../../src/ts/trainer/lessons");
+        expect(fresh.progress().attempts).toHaveLength(60);
+        expect(fresh.recordAttempt(attempt("home-row", "qwerty", 20, 90))).toBe(
+          false,
+        );
+        expect(fresh.progress().attempts).toHaveLength(50);
       });
 
       it("upgrades a stored v2 blob on load and keeps the unlocked lesson", async () => {
@@ -1980,10 +2021,7 @@ describe("lessons", () => {
         );
       });
 
-      it("repairs against a stored list over the caps", async () => {
-        // a hand-seeded store can hold more than the caps: the pointer still
-        // lands where the attempts reach, the repair is no fresh unlock, and
-        // the store comes out trimmed
+      it("repairs against a stored list over the per-lesson cap", async () => {
         const fresh = await loaded(
           "gone",
           Array.from({ length: 60 }, (_, ts) => ({
@@ -1996,6 +2034,20 @@ describe("lessons", () => {
         );
         expect(fresh.progress().layouts["qwerty"]?.unlocked).toBe("e-i");
         expect(fresh.progress().attempts).toHaveLength(50);
+      });
+
+      it("reports the repair as an unlock when the total cap drops the evidence", async () => {
+        // the baseline walk has to read the same trimmed list as the walk that
+        // repairs: untrimmed it still sees the attempt the store is losing
+        const fresh = await loaded("gone", [
+          attempt("home-row", "qwerty", 40),
+          ...filler(1000),
+        ]);
+        expect(fresh.recordAttempt(attempt("home-row", "qwerty", 40))).toBe(
+          true,
+        );
+        expect(fresh.progress().layouts["qwerty"]?.unlocked).toBe("e-i");
+        expect(fresh.progress().attempts).toHaveLength(1000);
       });
 
       it("leaves it alone while the attempts prove nothing", async () => {
@@ -2020,8 +2072,8 @@ describe("lessons", () => {
         vi.resetModules();
       });
 
-      // nothing syncs on import: the load path is the config event, so the
-      // fresh copy needs the fresh event bus, config store and notifications
+      // loading the module syncs nothing: the load path is the config event, so
+      // the fresh copy needs the fresh bus, config store and notifications
       async function loaded(stored: Progress): Promise<{
         lessons: typeof import("../../src/ts/trainer/lessons");
         config: typeof import("../../src/ts/config/store");
@@ -2069,9 +2121,9 @@ describe("lessons", () => {
         dispatch({ key: "fullConfigChangeFinished" });
         expect(lessons.progress().layouts["qwerty"]?.unlocked).toBe("home-row");
 
-        // the setter writes the legacy object and the store, then dispatches
+        // the setter dispatches before it writes the store, so a listener sees
+        // the new value on Config alone
         config.Config.trainerUnlock = "relaxed";
-        config.setConfigStore("trainerUnlock", "relaxed");
         dispatch({
           key: "trainerUnlock",
           newValue: "relaxed",
@@ -2193,7 +2245,6 @@ describe("lessons", () => {
       });
 
       it("announces one repair per load across the paths that repair", () => {
-        // the import repairs qwerty; dvorak has nothing to go on yet
         replaceProgress({
           version: 3,
           layouts: {
@@ -2203,9 +2254,43 @@ describe("lessons", () => {
           attempts: [attempt("home-row", "qwerty", 40)],
         });
         expect(noticeMock).toHaveBeenCalledTimes(1);
-        // the attempt repairs dvorak, and this load already said its piece
         expect(recordAttempt(attempt("home-row", "dvorak", 40))).toBe(true);
         expect(progress().layouts["dvorak"]?.unlocked).toBe("e-i");
+        expect(noticeMock).toHaveBeenCalledTimes(1);
+      });
+
+      it("leaves the budget alone for an import that repairs nothing", () => {
+        replaceProgress({
+          version: 3,
+          layouts: {
+            qwerty: { current: "home-row", unlocked: "gone", best: {} },
+            dvorak: { current: "home-row", unlocked: "vanished", best: {} },
+          },
+          attempts: [attempt("home-row", "qwerty", 40)],
+        });
+        expect(noticeMock).toHaveBeenCalledTimes(1);
+        replaceProgress({
+          version: 3,
+          layouts: {
+            dvorak: { current: "home-row", unlocked: "vanished", best: {} },
+          },
+          attempts: [],
+        });
+        expect(recordAttempt(attempt("home-row", "dvorak", 40))).toBe(true);
+        expect(progress().layouts["dvorak"]?.unlocked).toBe("e-i");
+        expect(noticeMock).toHaveBeenCalledTimes(1);
+      });
+
+      it("reads the whole imported list before the caps trim it", () => {
+        replaceProgress({
+          version: 3,
+          layouts: {
+            qwerty: { current: "home-row", unlocked: "gone", best: {} },
+          },
+          attempts: [attempt("home-row", "qwerty", 40), ...filler(1000)],
+        });
+        expect(progress().layouts["qwerty"]?.unlocked).toBe("e-i");
+        expect(progress().attempts).toHaveLength(1000);
         expect(noticeMock).toHaveBeenCalledTimes(1);
       });
 
@@ -2289,8 +2374,11 @@ describe("lessons", () => {
         ["qwerty", qwerty],
         ["canadian_french", canadianFrench],
       ];
-      const unlocks: TrainerUnlock[] = ["relaxed", "normal", "strict"];
+      const unlocks: TrainerUnlock[] = [...TrainerUnlockSchema.options];
       const lengths = [10, 25, 40, 100, 200];
+      // the ends of the sweep are the schema's own floor and ceiling
+      expect(TrainerWordsPerTestSchema.safeParse(9).success).toBe(false);
+      expect(TrainerWordsPerTestSchema.safeParse(201).success).toBe(false);
       const unreachable: string[] = [];
       const visits = new Map<string, number>();
 
@@ -2349,10 +2437,10 @@ describe("lessons", () => {
           (lesson) => `qwerty ${lesson.id}`,
         ),
       );
-      // and every lesson it did visit ran under all of the settings
-      expect([...new Set(visits.values())]).toEqual([
-        unlocks.length * lengths.length,
-      ]);
+      // 18 lessons on qwerty and 22 on canadian_french, each over 3 unlock
+      // settings and 5 test lengths
+      expect(visits.size).toBe(18 + 22);
+      expect([...new Set(visits.values())]).toEqual([15]);
     });
   });
 });

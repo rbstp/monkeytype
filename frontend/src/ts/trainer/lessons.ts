@@ -1219,8 +1219,8 @@ type UnlockRepair = { layout: string; unlocked: string };
 
 let repairAnnounced = false;
 
-function announceRepairs(repairs: UnlockRepair[]): void {
-  if (repairAnnounced || repairs.length === 0) return;
+function announceRepairs(repairs: UnlockRepair[], anyway = false): void {
+  if (repairs.length === 0 || (repairAnnounced && !anyway)) return;
   repairAnnounced = true;
   const lines = repairs.map(
     ({ layout, unlocked }) =>
@@ -1237,7 +1237,7 @@ function announceRepairs(repairs: UnlockRepair[]): void {
  * the criteria applies to lessons already practised instead of only to the next
  * test.
  */
-function syncUnlocked(): void {
+function syncUnlocked(announceAnyway = false): void {
   const criteria = criteriaFor(Config.trainerUnlock);
   const repairs: UnlockRepair[] = [];
   setProgress((current) => {
@@ -1264,7 +1264,7 @@ function syncUnlocked(): void {
     }
     return next;
   });
-  announceRepairs(repairs);
+  announceRepairs(repairs, announceAnyway);
 }
 
 configEvent.subscribe(({ key }) => {
@@ -1305,8 +1305,7 @@ export function recordAttempt(attempt: Attempt): boolean {
         // how far the pointer reaches, as they do in unlockedAfterSync
         const earned = earnedUpTo(attempts, attempt.layout, criteria, 0);
         const lesson = LESSONS[earned];
-        // the baseline walks a trimmed list too, so both walks read the same
-        // attempts when the stored list came in over the caps
+        // both walks read the same trimmed list, so the repair is no unlock
         unlockedNow =
           earned >
           earnedUpTo(
@@ -1350,12 +1349,13 @@ export function resetProgress(): void {
   repairAnnounced = false;
 }
 
-/**
- * Takes an import as its own event: the caps apply to the list it carries, and
- * a repair it needs is announced even once this page load reported one.
- */
 export function replaceProgress(data: Progress): void {
-  repairAnnounced = false;
-  setProgress({ ...data, attempts: trimAttempts(data.attempts) });
-  syncUnlocked();
+  setProgress(data);
+  // a repair walks the attempts from the first lesson, so it reads the list
+  // the import carried before the caps drop the oldest of it
+  syncUnlocked(true);
+  setProgress((current) => ({
+    ...current,
+    attempts: trimAttempts(current.attempts),
+  }));
 }
