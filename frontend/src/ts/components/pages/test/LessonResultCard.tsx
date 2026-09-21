@@ -76,18 +76,21 @@ export function LessonResultCard(): JSXElement {
         ? "lesson passed"
         : `lesson ${lessonNumber(index, layout)} unlocked: ${lessonName(following, inputLayoutObject())}`;
     }
-    if (status.wpmShort > 0) {
-      return `${Math.round(latest.wpm)} wpm, ${status.wpmShort} short of ${criteria.minWpm}`;
+    const accLine = `accuracy ${Math.floor(latest.acc)}%, ${status.accShort} short of ${criteria.minAcc}%`;
+    if (status.phase === "speed") {
+      if (status.wpmShort > 0) {
+        return `speed phase: ${Math.round(latest.wpm)} wpm, ${status.wpmShort} short of ${criteria.minWpm}`;
+      }
+      if (status.accShort > 0) return `speed phase: ${accLine}`;
+      return "speed phase: pass once more to unlock";
     }
-    if (status.accShort > 0) {
-      return `accuracy ${Math.floor(latest.acc)}%, ${status.accShort} short of ${criteria.minAcc}%`;
-    }
+    if (status.accShort > 0) return `accuracy phase: ${accLine}`;
     const weak = status.weakKeys[0];
-    if (weak === undefined) return "passed the bar, pass once more to unlock";
+    if (weak === undefined) return "accuracy phase";
     if (weak.samples < weak.required) {
-      return `passed the bar, ${legend(weak)} needs ${weak.required - weak.samples} more samples`;
+      return `accuracy phase: ${legend(weak)} needs ${weak.required - weak.samples} more samples`;
     }
-    return `passed the bar, ${legend(weak)} has ${weak.errors} errors in ${weak.samples} samples, above ${masteryErrorRate * 100}%`;
+    return `accuracy phase: ${legend(weak)} errs ${Math.round((weak.errors / weak.samples) * 100)}%, bar ${masteryErrorRate * 100}%`;
   });
 
   return (

@@ -851,6 +851,7 @@ describe("lessons", () => {
         "qwerty",
       );
       expect(status.ok).toBe(false);
+      expect(status.phase).toBe("accuracy");
       expect(status.wpmShort).toBe(0);
       expect(status.accShort).toBe(0);
       expect(status.weakKeys).toEqual([
@@ -1004,6 +1005,7 @@ describe("lessons", () => {
     it("passes with the floors and every key mastered", () => {
       expect(status([attempt()])).toEqual({
         ok: true,
+        phase: "speed",
         wpmShort: 0,
         accShort: 0,
         weakKeys: [],
@@ -1013,10 +1015,54 @@ describe("lessons", () => {
     it("reports the wpm shortfall from the rounded latest attempt", () => {
       expect(status([attempt({ wpm: 26.6 })])).toMatchObject({
         ok: false,
+        phase: "speed",
         wpmShort: 3,
         accShort: 0,
       });
       expect(status([attempt(), attempt({ wpm: 20 })]).wpmShort).toBe(10);
+    });
+
+    it("stays in the accuracy phase and hides the wpm shortfall while a key is weak", () => {
+      const weak = status([
+        attempt({
+          wpm: 20,
+          perKey: {
+            KeyE: { total: 20, errors: 0 },
+            KeyI: { total: 20, errors: 3 },
+          },
+        }),
+      ]);
+      expect(weak.phase).toBe("accuracy");
+      expect(weak.wpmShort).toBe(0);
+      expect(weak.weakKeys.map((key) => key.keycode)).toEqual(["KeyI"]);
+      const thin = status([
+        attempt({
+          wpm: 20,
+          acc: 90,
+          perKey: { KeyE: { total: 5, errors: 0 } },
+        }),
+      ]);
+      expect(thin.phase).toBe("accuracy");
+      expect(thin.wpmShort).toBe(0);
+      expect(thin.accShort).toBe(7);
+    });
+
+    it("starts a track in the accuracy phase before any key is known", () => {
+      const fresh = unlockStatus([], "accents-grave", "canadian_french");
+      expect(fresh.phase).toBe("accuracy");
+      expect(fresh.wpmShort).toBe(0);
+      expect(fresh.weakKeys).toEqual([]);
+    });
+
+    it("moves to the speed phase once mastery holds, whatever the wpm", () => {
+      const slow = status([attempt({ wpm: 12 })]);
+      expect(slow).toMatchObject({ ok: false, phase: "speed", wpmShort: 18 });
+      const slowInaccurate = status([attempt({ wpm: 12, acc: 90 })]);
+      expect(slowInaccurate).toMatchObject({
+        phase: "speed",
+        wpmShort: 18,
+        accShort: 7,
+      });
     });
 
     it("reports the accuracy shortfall from the floored latest attempt", () => {
@@ -1059,7 +1105,8 @@ describe("lessons", () => {
     it("asks for the whole bar without attempts", () => {
       expect(status([])).toEqual({
         ok: false,
-        wpmShort: 30,
+        phase: "accuracy",
+        wpmShort: 0,
         accShort: 97,
         weakKeys: [
           { keycode: "KeyE", samples: 0, errors: 0, required: 20 },
@@ -1071,6 +1118,7 @@ describe("lessons", () => {
     it("needs the strict window even when the latest attempt passes", () => {
       expect(status([attempt()], criteriaFor("strict"))).toMatchObject({
         ok: false,
+        phase: "speed",
         wpmShort: 0,
         accShort: 0,
         weakKeys: [],

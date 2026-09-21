@@ -829,8 +829,13 @@ export function masteryOf(
 
 export type WeakKey = { keycode: Keycode } & KeyMastery;
 
+export type LessonPhase = "accuracy" | "speed";
+
 export type UnlockStatus = {
   ok: boolean;
+  /** accuracy while any new key is weak, speed once mastery holds */
+  phase: LessonPhase;
+  /** reported in the speed phase only */
   wpmShort: number;
   accShort: number;
   weakKeys: WeakKey[];
@@ -873,16 +878,23 @@ export function unlockStatus(
         Math.floor(attempt.acc) >= criteria.minAcc &&
         Math.round(attempt.wpm) >= criteria.minWpm,
     );
-  const weakKeys = (
-    Object.entries(masteryOf(attempts, lesson, layout)) as [
-      Keycode,
-      KeyMastery,
-    ][]
-  )
+  const mastery = masteryOf(attempts, lesson, layout);
+  const weakKeys = (Object.entries(mastery) as [Keycode, KeyMastery][])
     .filter(([, key]) => isWeak(key))
     .map(([keycode, key]) => ({ keycode, ...key }))
     .sort((a, b) => a.samples - b.samples || errorShare(b) - errorShare(a));
-  return { ok: floors && weakKeys.length === 0, wpmShort, accShort, weakKeys };
+  // a track learns its keys from the attempts, so nothing known means nothing mastered
+  const phase: LessonPhase =
+    Object.keys(mastery).length > 0 && weakKeys.length === 0
+      ? "speed"
+      : "accuracy";
+  return {
+    ok: floors && weakKeys.length === 0,
+    phase,
+    wpmShort: phase === "speed" ? wpmShort : 0,
+    accShort,
+    weakKeys,
+  };
 }
 
 export function canUnlock(

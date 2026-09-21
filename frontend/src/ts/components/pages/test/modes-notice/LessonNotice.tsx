@@ -9,7 +9,9 @@ import {
   lessonName,
   lessonNumber,
   LESSONS,
+  progress,
   progressLayout,
+  unlockStatus,
 } from "../../../../trainer/lessons";
 import { getActiveLesson } from "../../../../trainer/session";
 import { Notice } from "./Notice";
@@ -26,7 +28,17 @@ export function LessonNotice() {
     const best = bestOf(lesson.id);
     if (best !== undefined) parts.push(`best ${Math.round(best)}`);
     const criteria = criteriaFor(getConfig.trainerUnlock);
-    parts.push(`target ${criteria.minWpm} / ${criteria.minAcc}%`);
+    const { phase } = unlockStatus(
+      progress().attempts,
+      lesson.id,
+      progressLayout(),
+      criteria,
+    );
+    parts.push(
+      phase === "speed"
+        ? `speed phase · target ${criteria.minWpm} wpm`
+        : `accuracy phase · target ${criteria.minAcc}%`,
+    );
     return parts.join(" · ");
   });
 

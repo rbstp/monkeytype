@@ -64,12 +64,33 @@ describe("LessonNotice", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("names the lesson and the target without attempts", () => {
+  it("names the lesson and the accuracy target without attempts", () => {
     setActiveLesson(2);
     render(() => <LessonNotice />);
     expect(screen.getByRole("button")).toHaveTextContent(
-      "lesson 3: r u · target 30 / 97%",
+      "lesson 3: r u · accuracy phase · target 97%",
     );
+  });
+
+  it("shows the speed target once every new key is mastered", () => {
+    setActiveLesson(2);
+    render(() => <LessonNotice />);
+    recordAttempt({
+      lesson: "r-u",
+      layout: "qwerty",
+      wpm: 20,
+      acc: 98,
+      perKey: {
+        KeyR: { total: 20, errors: 0 },
+        KeyU: { total: 20, errors: 0 },
+      },
+      ts: 1,
+    });
+    expect(screen.getByRole("button")).toHaveTextContent(
+      "lesson 3: r u · best 20 · speed phase · target 30 wpm",
+    );
+    setConfigStore("trainerUnlock", "strict");
+    expect(screen.getByRole("button")).toHaveTextContent("target 35 wpm");
   });
 
   it("names the lesson by the legends of the input layout", () => {
@@ -96,7 +117,7 @@ describe("LessonNotice", () => {
     );
     render(() => <LessonNotice />);
     expect(screen.getByRole("button")).toHaveTextContent(
-      "lesson 3: r u · best 32 · target 30 / 97%",
+      "lesson 3: r u · best 32 · accuracy phase · target 97%",
     );
   });
 
@@ -121,7 +142,7 @@ describe("LessonNotice", () => {
     render(() => <LessonNotice />);
     setConfigStore("trainerUnlock", "strict");
     expect(screen.getByRole("button")).toHaveTextContent(
-      "lesson 3: r u · target 35 / 98%",
+      "lesson 3: r u · accuracy phase · target 98%",
     );
   });
 

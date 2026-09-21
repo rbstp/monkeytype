@@ -16,7 +16,7 @@ Gaps:
 
 - The chip at LessonNotice.tsx names the active lesson, its best and the target on the test screen; the result card at LessonResultCard.tsx prints the shortfall or the unlock with retry and next. The unlock toast in trainer/index.ts stays.
 - Key stats v2 keeps speed apart from errors: emaMs takes only correct, non-recovery samples with pauses capped at three times the average, errRate is its own moving average, and deletes advance the clock. Shift is still folded into the base key in key-stats.ts; an accented char typed through a dead key counts for the dead key, which carries the spacing, and the base key since the French track. Panel and tips label keys slow or error-prone, and name the worst confusion pairs since pairwise-stats.
-- Unlocks read the configured floor through criteriaFor and, since the mastery gate, `masteryOf` in lessons.ts pools perKey over the last three attempts: a new key needs its share of a 60-sample budget (20 for a two-key lesson, 4 for capitals left, 6 for capitals right) and at most 3% errors before `unlockStatus` says ok. The result card prints the first shortfall.
+- Unlocks read the configured floor through criteriaFor and, since the mastery gate, `masteryOf` in lessons.ts pools perKey over the last three attempts: a new key needs its share of a 60-sample budget (20 for a two-key lesson, 4 for capitals left, 6 for capitals right) and at most 3% errors before `unlockStatus` says ok. Since step 18 the status carries a phase: accuracy while a new key is weak, speed once mastery holds, and the card and the chip show only what that phase asks for.
 - Early lessons read real words since the adaptive-words slice: `largestCorpus` in session.ts loads english_10k, `buildLessonWords` draws by damped rank when the corpus is ordered by frequency and never mutates a real word. Since step 17 the 120-word pool is weighted by `charWeights` and rebuilt after every finished lesson test through `rebuildLessonWords`.
 - Lesson names follow the layout since layout-aware-curriculum: `lessonName` in lessons.ts joins the fresh legends for the lessons whose name is their qwerty legends and keeps the fixed names, `lessonKeyLegend` resolves the numbers through `layer: "auto"`, and every surface (page, chip, card, indicator, toast, commandline) reads it. "default" resolves through keymapLayout in utils/layout-name.ts, and progress is per layout since Progress v2: `progressLayout()` in lessons.ts names the entry that `currentLesson()`, `unlockedUpTo()` and `bestOf()` read.
 - Config leaks, closed by foundations A: lifecycle.ts sets the store before it fires the finished event, the persisted config hook in session.ts keeps lesson values out of the saved config, and index.ts scores an attempt only when isLessonText accepts the target words.
@@ -84,6 +84,8 @@ A lesson unlocks when its new keys are mastered, not when old keys mask weak one
 perKey is recorded per attempt and never read. Pool the last three attempts, require 20 fresh samples and at most 3% fresh errors, keep the configured floors. The reviewer showed a 95% Wilson bound is unreachable at 15 samples, so use plain counts; a per-key minAcc was cut because failed tests are never recorded.
 
 First slice landed in `feat(trainer): mastery-and-phases, gate unlocks on per-key mastery`: masteryOf and unlockStatus wired into canUnlock, syncUnlocked and recordAttempt, plain counts, capitals pool shifted samples only, and `masterySamplesFor` scales the requirement with the lesson width so capitals asks 3 samples per letter instead of 20. The shortfall notice arrives with the result card in build-order step 9.
+
+Second slice landed in `feat(trainer): mastery-and-phases, accuracy phase then speed phase`: `unlockStatus` gains `phase`, accuracy while any new key is below its samples or above the error bar and speed once mastery holds. The floors do not change and no state is added; the wpm shortfall is reported only in the speed phase, so the card reads "accuracy phase: k errs 6%, bar 3%" or "accuracy phase: k needs 12 more samples", then "speed phase: 27 wpm, 3 short of 30", and the chip shows only the target that applies to the phase.
 
 Risk, resolved: the shortfall copy lives on the result card since build-order step 9.
 
@@ -225,7 +227,7 @@ Later, the French goal and the rest:
 15. curriculum-tracks: capitals by hand and the punctuation ladder, then the French accents track with a dead-key table. Done in two commits: `feat(trainer): curriculum-tracks, id-based progress and the capitals split` and `feat(trainer): curriculum-tracks, the French accents track`; covers foundation item 8 above for dead keys.
 16. pairwise-stats: confusion pairs, then bigram transitions. Confusions done in `feat(trainer): pairwise-stats, confusion pairs`; transitions are still open.
 17. adaptive-words: weak-key weighting and mid-lesson rebuilds. Done in `feat(trainer): adaptive-words, weak-key weighting and mid-lesson rebuilds`.
-18. mastery-and-phases: speed and accuracy phases.
+18. mastery-and-phases: speed and accuracy phases. Done in `feat(trainer): mastery-and-phases, accuracy phase then speed phase`.
 19. keymap-visuals: the heatmap.
 20. progress-dashboard: key history and deltas.
 
