@@ -1904,17 +1904,76 @@ describe("lessons", () => {
       expect(progress().layouts["qwerty"]?.unlocked).toBe("g-h");
     });
 
-    it("moves an unreadable pointer forward rather than leaving it stuck", () => {
-      replaceProgress({
-        version: 3,
-        layouts: {
-          qwerty: { current: "home-row", unlocked: "gone", best: {} },
-        },
-        attempts: [],
+    describe("recording against an unreadable pointer", () => {
+      let noticeMock: MockInstance<typeof Notifications.showNoticeNotification>;
+
+      afterEach(() => {
+        vi.restoreAllMocks();
+        localStorage.removeItem("trainerProgress");
+        vi.resetModules();
       });
-      expect(progress().layouts["qwerty"]?.unlocked).toBe("gone");
-      expect(recordAttempt(attempt("home-row", "qwerty", 40))).toBe(true);
-      expect(progress().layouts["qwerty"]?.unlocked).toBe("e-i");
+
+      // the fresh import gets its own notification module, so spy on that one
+      async function loaded(
+        unlocked: string,
+        attempts: Attempt[],
+      ): Promise<typeof import("../../src/ts/trainer/lessons")> {
+        localStorage.setItem(
+          "trainerProgress",
+          JSON.stringify({
+            version: 3,
+            layouts: { qwerty: { current: "home-row", unlocked, best: {} } },
+            attempts,
+          }),
+        );
+        vi.resetModules();
+        const notifications = await import("../../src/ts/states/notifications");
+        noticeMock = vi
+          .spyOn(notifications, "showNoticeNotification")
+          .mockReturnValue(0);
+        return import("../../src/ts/trainer/lessons");
+      }
+
+      it("moves it to what the attempts earn", async () => {
+        const fresh = await loaded("gone", []);
+        expect(fresh.progress().layouts["qwerty"]?.unlocked).toBe("gone");
+        expect(fresh.recordAttempt(attempt("home-row", "qwerty", 40))).toBe(
+          true,
+        );
+        expect(fresh.progress().layouts["qwerty"]?.unlocked).toBe("e-i");
+        expect(noticeMock).toHaveBeenCalledWith(
+          "Trainer: an unreadable unlock was rebuilt from your attempts, qwerty through lesson 2.",
+          { durationMs: 8000 },
+        );
+      });
+
+      it("never moves it back below what the attempts prove", async () => {
+        const fresh = await loaded("gone", [
+          attempt("home-row", "qwerty", 40),
+          attempt("e-i", "qwerty", 40),
+        ]);
+        expect(fresh.progress().layouts["qwerty"]?.unlocked).toBe("gone");
+        expect(fresh.recordAttempt(attempt("home-row", "qwerty", 40))).toBe(
+          false,
+        );
+        expect(fresh.progress().layouts["qwerty"]?.unlocked).toBe("r-u");
+        expect(noticeMock).toHaveBeenCalledWith(
+          "Trainer: an unreadable unlock was rebuilt from your attempts, qwerty through lesson 3.",
+          { durationMs: 8000 },
+        );
+      });
+
+      it("leaves it alone while the attempts prove nothing", async () => {
+        const fresh = await loaded("gone", []);
+        expect(
+          fresh.recordAttempt({
+            ...attempt("home-row", "qwerty", 40),
+            perKey: {},
+          }),
+        ).toBe(false);
+        expect(fresh.progress().layouts["qwerty"]?.unlocked).toBe("gone");
+        expect(noticeMock).not.toHaveBeenCalled();
+      });
     });
 
     describe("the repair notice", () => {

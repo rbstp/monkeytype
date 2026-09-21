@@ -1291,28 +1291,45 @@ export function recordAttempt(attempt: Attempt): boolean {
   const index = lessonIndex(attempt.lesson);
   if (index === -1) return false;
   let unlockedNow = false;
+  const criteria = criteriaFor(Config.trainerUnlock);
+  const repairs: UnlockRepair[] = [];
   setProgress((current) => {
     const attempts = trimAttempts([...current.attempts, attempt]);
     const next = nextLesson(index, attempt.layout);
     return updateLayout({ ...current, attempts }, attempt.layout, (entry) => {
       const following = next === undefined ? undefined : LESSONS[next];
-      unlockedNow =
+      const stored = lessonIndex(entry.unlocked);
+      let unlocked = entry.unlocked;
+      if (stored === -1) {
+        // an id nobody can resolve is no evidence, so the attempts alone say
+        // how far the pointer reaches, as they do in unlockedAfterSync
+        const earned = earnedUpTo(attempts, attempt.layout, criteria, 0);
+        const lesson = LESSONS[earned];
+        unlockedNow =
+          earned >
+          earnedUpTo(
+            trimAttempts(current.attempts),
+            attempt.layout,
+            criteria,
+            0,
+          );
+        if (earned > 0 && lesson !== undefined) {
+          unlocked = lesson.id;
+          repairs.push({ layout: attempt.layout, unlocked });
+        }
+      } else if (
         next !== undefined &&
         following !== undefined &&
-        indexOrFirst(entry.unlocked) < next &&
-        unlockStatus(
-          attempts,
-          attempt.lesson,
-          attempt.layout,
-          criteriaFor(Config.trainerUnlock),
-        ).ok;
+        stored < next &&
+        unlockStatus(attempts, attempt.lesson, attempt.layout, criteria).ok
+      ) {
+        unlockedNow = true;
+        unlocked = following.id;
+      }
       const known = entry.best[attempt.lesson];
       return {
         ...entry,
-        unlocked:
-          unlockedNow && following !== undefined
-            ? following.id
-            : entry.unlocked,
+        unlocked,
         best: {
           ...entry.best,
           [attempt.lesson]:
@@ -1321,6 +1338,7 @@ export function recordAttempt(attempt: Attempt): boolean {
       };
     });
   });
+  announceRepairs(repairs);
   return unlockedNow;
 }
 

@@ -65,9 +65,11 @@ does work`. Decisions that shaped it are in
   `reviewKeys` finds slow, error-prone or slower than last week, and
   `startWarmUp` over every character the unlocked lessons teach. None of them
   records a lesson attempt, shows the chip, or lets `rebuildLessonWords` run.
-  `warmUpSummary` counts the words committed in the event log, not wpm over the
-  clock, which measured five-character units; the word in progress when the
-  clock runs out was never committed, so it is not counted.
+  `warmUpSummary` counts the distinct word indices the event log commits, not
+  wpm over the clock, which measured five-character units, and not every
+  `commitsWord`, since backspacing over a word boundary commits the same word
+  again; the word in progress when the clock runs out was never committed, so
+  it is not counted.
 - The config cannot leak: lifecycle.ts sets the store before it fires the
   finished event, the persisted config hook in session.ts keeps lesson values
   out of the saved config, and index.ts scores an attempt only when
@@ -86,7 +88,10 @@ does work`. Decisions that shaped it are in
   resolves is still walked forward only. `syncUnlocked` runs on every
   `fullConfigChangeFinished`, on every unlock change and on a backup import, so
   it collects only the writes that replaced an unreadable id and says once per
-  page load which layout and lesson the pointer landed on.
+  page load which layout and lesson the pointer landed on. `recordAttempt`
+  reads an unreadable id the same way rather than through `indexOrFirst`, so
+  the guarantee holds in one module instead of resting on the sync running
+  first, and a pointer it rebuilds says so through the same notice.
 - The trainer page shows the lesson map, a continue button, an attempts chart
   against the configured floors and named for the layout `progressLayout`
   resolves, a per-lesson table and the key changes from `keyDeltas`, which
@@ -187,6 +192,12 @@ does work`. Decisions that shaped it are in
     and the repaired unlock`: the attempts chart names the layout it is drawn
     from, and a pointer rebuilt from the attempts says so once per page load
     instead of changing the map in silence.
+
+34. honesty, the warm-up count and a local unlock invariant. `fix(trainer):
+    honesty, count warm-up words once and read a lost pointer locally`: the
+    warm-up counts distinct committed words and says "1 word", and
+    `recordAttempt` decides for itself what an unresolvable unlock id means and
+    reports the pointer it rebuilds.
 
 ## Open
 

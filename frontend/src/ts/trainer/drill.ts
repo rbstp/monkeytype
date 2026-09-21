@@ -117,17 +117,19 @@ export function drillSummary(
 }
 
 export function warmUpSummary(log: EventLog): string {
-  let words = 0;
+  // backspacing over a word boundary commits the same word again
+  const committed = new Set<number>();
   for (const event of log.events) {
     if (
       event.type === "input" &&
       "commitsWord" in event.data &&
       event.data.commitsWord === true
     ) {
-      words++;
+      committed.add(event.data.wordIndex);
     }
   }
-  return `warm-up done, ${words} words`;
+  const words = committed.size;
+  return `warm-up done, ${words} ${words === 1 ? "word" : "words"}`;
 }
 
 function statsName(): string {
