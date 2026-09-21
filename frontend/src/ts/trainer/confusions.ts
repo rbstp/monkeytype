@@ -143,11 +143,12 @@ export function worstConfusions(
 
 const emptyConfusions = (): Confusions => ({ version: 1, layouts: {} });
 
-const [confusions, setConfusions] = useLocalStorage<Confusions>({
-  key: "trainerConfusions",
-  schema: ConfusionsSchema,
-  fallback: emptyConfusions(),
-});
+const [confusions, setConfusions, wroteConfusions] =
+  useLocalStorage<Confusions>({
+    key: "trainerConfusions",
+    schema: ConfusionsSchema,
+    fallback: emptyConfusions(),
+  });
 
 export function getLayoutConfusions(layoutName: string): LayoutConfusions {
   return confusions().layouts[layoutName] ?? {};
@@ -175,6 +176,7 @@ export function resetConfusions(): void {
   setConfusions(emptyConfusions());
 }
 
-export function replaceConfusions(data: Confusions): void {
+export function replaceConfusions(data: Confusions): boolean {
   setConfusions(capped(data));
+  return wroteConfusions();
 }

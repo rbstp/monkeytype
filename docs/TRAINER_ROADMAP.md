@@ -74,6 +74,15 @@ does work`. Decisions that shaped it are in
   `commitsWord`, since backspacing over a word boundary commits the same word
   again; the word in progress when the clock runs out was never committed, so
   it is not counted.
+- `useLocalStorage` returns the write outcome as its third element, since the
+  setter has already run its updater by the time `storage.set` can refuse (a
+  full store, a schema failure). `recordAttempt` returns false and stays quiet
+  on a refused write rather than announcing an unlock that was never stored,
+  `syncUnlocked` holds the repair notice back the same way, and every
+  `replace*` reports its write so `importBackup` fails instead of claiming a
+  success the stores do not hold. `importBackupFile` parses before it writes,
+  so a refused write is not reported as invalid data: the storage layer's own
+  notification is the one that speaks.
 - The config cannot leak: lifecycle.ts sets the store before it fires the
   finished event, the persisted config hook in session.ts keeps lesson values
   out of the saved config, and index.ts scores an attempt only when
@@ -232,6 +241,12 @@ does work`. Decisions that shaped it are in
     discriminate (the reachability totals, the trimmed baseline, the config
     setter order) are replaced by ones that do.
 
+38. honesty, a write that did not land. `fix(trainer): honesty, report the
+    write the store refused`: `useLocalStorage` hands back whether the last
+    write landed, and the paths that report to the user (`recordAttempt`, the
+    repair notice, every `replace*` and `importBackup`) read it instead of
+    trusting the updater they already ran.
+
 ## Open
 
 - The localStorage load path stores what `upgradeProgress` returns without
@@ -244,11 +259,14 @@ does work`. Decisions that shaped it are in
   listener on that key would read the store one change behind, since
   `setConfig` dispatches before it writes the store, so a test length change
   re-bars the stored attempts only at the next sync or attempt.
-- `useLocalStorage` runs the updater before `storage.set`, which can still be
-  refused (a full store, a schema failure). The signal keeps its old value but
-  what the updater collected has already escaped, so `recordAttempt` can report
-  an unlock that was never persisted. The specs pin the current behaviour; no
-  caller reads the setter's result yet.
+- `useLocalStorageStore` persists through an effect and drops the result, so a
+  refused write is invisible to its callers the way it used to be for
+  `useLocalStorage`. The trainer session state is the only reader, and it
+  reports nothing to the user, so it is left alone.
+- The record paths (`recordSamples`, `recordConfusions`, `recordTransitions`,
+  `recordSnapshot`, `setCurrentLesson`) still drop the write result. They claim
+  nothing to the user, and `storage.set` raises its own error notification, so
+  only the paths that report a result read it.
 - The layout emulator has no dead-key state, so the French track works on the OS
   layout only. `lessonAvailable` hides it everywhere else; not planned to change.
 

@@ -1109,7 +1109,7 @@ export function canUnlock(
   return unlockStatus(attempts, lesson, layout, criteria).ok;
 }
 
-const [progress, setProgress] = useLocalStorage<Progress>({
+const [progress, setProgress, wroteProgress] = useLocalStorage<Progress>({
   key: "trainerProgress",
   schema: ProgressSchema,
   fallback: emptyProgress(),
@@ -1264,7 +1264,8 @@ function syncUnlocked(announceAnyway = false): void {
     }
     return next;
   });
-  announceRepairs(repairs, announceAnyway);
+  // a refused write leaves the pointer as it was, so there is nothing to say
+  if (wroteProgress()) announceRepairs(repairs, announceAnyway);
 }
 
 configEvent.subscribe(({ key }) => {
@@ -1339,6 +1340,7 @@ export function recordAttempt(attempt: Attempt): boolean {
       };
     });
   });
+  if (!wroteProgress()) return false;
   announceRepairs(repairs);
   return unlockedNow;
 }
@@ -1349,8 +1351,9 @@ export function resetProgress(): void {
   repairAnnounced = false;
 }
 
-export function replaceProgress(data: Progress): void {
+export function replaceProgress(data: Progress): boolean {
   setProgress(data);
+  if (!wroteProgress()) return false;
   // a repair walks the attempts from the first lesson, so it reads the list
   // the import carried before the caps drop the oldest of it
   syncUnlocked(true);
@@ -1358,4 +1361,5 @@ export function replaceProgress(data: Progress): void {
     ...current,
     attempts: trimAttempts(current.attempts),
   }));
+  return wroteProgress();
 }

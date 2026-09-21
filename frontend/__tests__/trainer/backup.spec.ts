@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   exportBackup,
   importBackup,
@@ -30,6 +30,22 @@ import {
   progress,
   setCurrentLesson,
 } from "../../src/ts/trainer/lessons";
+
+// a refused write, scoped to the call: an assertion failure must not leave
+// every later write throwing, and vi.restoreAllMocks does not undo a spy on
+// the storage proxy
+function withRefusedWrites<T>(run: () => T): T {
+  const setItem = vi
+    .spyOn(window.localStorage, "setItem")
+    .mockImplementation(() => {
+      throw new Error("exceeded the quota");
+    });
+  try {
+    return run();
+  } finally {
+    setItem.mockRestore();
+  }
+}
 
 describe("backup", () => {
   it("round trips key stats and progress", () => {
@@ -75,6 +91,19 @@ describe("backup", () => {
     expect(getLayoutHistory("qwerty")["1970-01-01"]).toEqual({
       KeyS: { emaMs: 1, errRate: 0, total: 9 },
     });
+  });
+
+  it("reports a refused write instead of a success", () => {
+    resetKeyStats();
+    recordSamples("qwerty", [
+      { keycode: "KeyA", shifted: false, correct: true },
+    ]);
+    const json = exportBackup();
+    recordSamples("qwerty", [
+      { keycode: "KeyB", shifted: false, correct: true },
+    ]);
+    expect(withRefusedWrites(() => importBackup(json))).toBe(false);
+    expect(getKeyStats().layouts["qwerty"]?.["KeyB"]?.total).toBe(1);
   });
 
   it("applies every cap to the blob it imports", () => {

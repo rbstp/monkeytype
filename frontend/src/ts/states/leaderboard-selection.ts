@@ -1,6 +1,6 @@
 import { LanguageSchema } from "@monkeytype/schemas/languages";
 import { ModeSchema } from "@monkeytype/schemas/shared";
-import { Accessor, createEffect, createSignal, Setter } from "solid-js";
+import { createEffect, createSignal } from "solid-js";
 import { z } from "zod";
 import { serialize as serializeUrlSearchParams } from "zod-urlsearchparams";
 import { useLocalStorage } from "../hooks/useLocalStorage";
@@ -126,7 +126,7 @@ export function updateGetParameters(
   window.history.replaceState({}, "", newUrl);
 }
 
-function lsSelection(): [Accessor<Selection>, Setter<Selection>] {
+function lsSelection(): ReturnType<typeof useLocalStorage<Selection>> {
   return useLocalStorage<Selection>({
     key: "leaderboardSelector",
     schema: SelectionSchema,

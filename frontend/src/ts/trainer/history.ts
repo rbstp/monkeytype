@@ -103,11 +103,12 @@ export function keyDeltas(
 
 const emptyHistory = (): KeyHistory => ({ version: 1, layouts: {} });
 
-const [keyHistory, setKeyHistory] = useLocalStorage<KeyHistory>({
-  key: "trainerKeyHistory",
-  schema: KeyHistorySchema,
-  fallback: emptyHistory(),
-});
+const [keyHistory, setKeyHistory, wroteKeyHistory] =
+  useLocalStorage<KeyHistory>({
+    key: "trainerKeyHistory",
+    schema: KeyHistorySchema,
+    fallback: emptyHistory(),
+  });
 
 export function getLayoutHistory(layoutName: string): LayoutHistory {
   return keyHistory().layouts[layoutName] ?? {};
@@ -139,6 +140,7 @@ export function resetKeyHistory(): void {
   setKeyHistory(emptyHistory());
 }
 
-export function replaceKeyHistory(data: KeyHistory): void {
+export function replaceKeyHistory(data: KeyHistory): boolean {
   setKeyHistory(data);
+  return wroteKeyHistory();
 }

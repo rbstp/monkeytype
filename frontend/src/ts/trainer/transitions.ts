@@ -160,11 +160,12 @@ export function worstTransitions(
 
 const emptyTransitions = (): Transitions => ({ version: 1, layouts: {} });
 
-const [transitions, setTransitions] = useLocalStorage<Transitions>({
-  key: "trainerTransitions",
-  schema: TransitionsSchema,
-  fallback: emptyTransitions(),
-});
+const [transitions, setTransitions, wroteTransitions] =
+  useLocalStorage<Transitions>({
+    key: "trainerTransitions",
+    schema: TransitionsSchema,
+    fallback: emptyTransitions(),
+  });
 
 export function getLayoutTransitions(layoutName: string): LayoutTransitions {
   return transitions().layouts[layoutName] ?? {};
@@ -195,7 +196,7 @@ export function resetTransitions(): void {
 }
 
 // the cap lives on the record path, so an import applies it to what it carries
-export function replaceTransitions(data: Transitions): void {
+export function replaceTransitions(data: Transitions): boolean {
   const layouts: Transitions["layouts"] = {};
   for (const [layout, rows] of Object.entries(data.layouts)) {
     const next: LayoutTransitions = {};
@@ -203,4 +204,5 @@ export function replaceTransitions(data: Transitions): void {
     layouts[layout] = next;
   }
   setTransitions({ ...data, layouts });
+  return wroteTransitions();
 }

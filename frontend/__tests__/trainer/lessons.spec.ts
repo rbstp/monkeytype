@@ -56,6 +56,22 @@ import {
   upgradeProgress,
 } from "../../src/ts/trainer/lessons";
 
+// a refused write, scoped to the call: an assertion failure must not leave
+// every later write throwing, and vi.restoreAllMocks does not undo a spy on
+// the storage proxy
+function withRefusedWrites<T>(run: () => T): T {
+  const setItem = vi
+    .spyOn(window.localStorage, "setItem")
+    .mockImplementation(() => {
+      throw new Error("exceeded the quota");
+    });
+  try {
+    return run();
+  } finally {
+    setItem.mockRestore();
+  }
+}
+
 function mastered(id: string, samples = 20): Attempt["perKey"] {
   const lesson = LESSONS[lessonIndex(id)];
   return Object.fromEntries(
@@ -2279,6 +2295,39 @@ describe("lessons", () => {
         expect(recordAttempt(attempt("home-row", "dvorak", 40))).toBe(true);
         expect(progress().layouts["dvorak"]?.unlocked).toBe("e-i");
         expect(noticeMock).toHaveBeenCalledTimes(1);
+      });
+
+      it("reports a refused import and repairs nothing from it", () => {
+        const data: Progress = {
+          version: 3,
+          layouts: {
+            qwerty: { current: "home-row", unlocked: "gone", best: {} },
+          },
+          attempts: [attempt("home-row", "qwerty", 40)],
+        };
+        expect(withRefusedWrites(() => replaceProgress(data))).toBe(false);
+        expect(progress().layouts["qwerty"]).toBeUndefined();
+        expect(noticeMock).not.toHaveBeenCalled();
+      });
+
+      it("says nothing and claims nothing when the write is refused", () => {
+        expect(
+          replaceProgress({
+            version: 3,
+            layouts: {
+              qwerty: { current: "home-row", unlocked: "gone", best: {} },
+            },
+            attempts: [],
+          }),
+        ).toBe(true);
+        expect(
+          withRefusedWrites(() =>
+            recordAttempt(attempt("home-row", "qwerty", 40)),
+          ),
+        ).toBe(false);
+        expect(progress().layouts["qwerty"]?.unlocked).toBe("gone");
+        expect(progress().attempts).toHaveLength(0);
+        expect(noticeMock).not.toHaveBeenCalled();
       });
 
       it("reads the whole imported list before the caps trim it", () => {

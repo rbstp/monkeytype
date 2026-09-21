@@ -8,7 +8,7 @@ import {
 } from "../states/notifications";
 import * as TestLogic from "../test/test-logic";
 import { download } from "../utils/misc";
-import { exportBackup, importBackup } from "./backup";
+import { exportBackup, importBackup, parseBackup } from "./backup";
 import { startDrill, startReview, startWarmUp } from "./drill";
 import { unlockedUpTo } from "./lessons";
 import { startLesson } from "./session";
@@ -76,12 +76,15 @@ export async function importBackupFile(file: File): Promise<boolean> {
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result;
-      const imported = importBackup(typeof content === "string" ? content : "");
-      if (imported) {
-        showSuccessNotification("Trainer data imported");
-      } else {
+      const json = typeof content === "string" ? content : "";
+      if (parseBackup(json) === undefined) {
         showErrorNotification("Invalid trainer data");
+        resolve(false);
+        return;
       }
+      // a refused write raises its own notification, so the data is not blamed
+      const imported = importBackup(json);
+      if (imported) showSuccessNotification("Trainer data imported");
       resolve(imported);
     };
     reader.onerror = () => {

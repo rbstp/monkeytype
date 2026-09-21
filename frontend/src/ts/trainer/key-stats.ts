@@ -303,7 +303,7 @@ export function upgradeKeyStats(v1: KeyStatsV1): KeyStats {
 
 const emptyKeyStats = (): KeyStats => ({ version: 2, layouts: {} });
 
-const [keyStats, setKeyStats] = useLocalStorage<KeyStats>({
+const [keyStats, setKeyStats, wroteKeyStats] = useLocalStorage<KeyStats>({
   key: "trainerKeyStats",
   schema: KeyStatsSchema,
   fallback: emptyKeyStats(),
@@ -340,6 +340,7 @@ export function getKeyStats(): KeyStats {
   return keyStats();
 }
 
-export function replaceKeyStats(data: KeyStats): void {
+export function replaceKeyStats(data: KeyStats): boolean {
   setKeyStats(data);
+  return wroteKeyStats();
 }

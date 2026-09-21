@@ -236,5 +236,35 @@ describe("trainer actions", () => {
       expect(successMock).toHaveBeenCalledWith("Trainer data imported");
       expect(currentLesson()).toBe(4);
     });
+
+    it("does not blame the data for a write the store refused", async () => {
+      const successMock = vi
+        .spyOn(Notifications, "showSuccessNotification")
+        .mockReturnValue(0);
+      const errorMock = vi
+        .spyOn(Notifications, "showErrorNotification")
+        .mockReturnValue(0);
+      const backup = JSON.stringify({
+        version: 1,
+        keyStats: { version: 2, layouts: {} },
+        progress: { version: 1, current: 2, unlocked: 3, attempts: [] },
+      });
+      const setItem = vi
+        .spyOn(window.localStorage, "setItem")
+        .mockImplementation(() => {
+          throw new Error("exceeded the quota");
+        });
+      let imported: boolean;
+      try {
+        imported = await importBackupFile(
+          new File([backup], "b.json", { type: "application/json" }),
+        );
+      } finally {
+        setItem.mockRestore();
+      }
+      expect(imported).toBe(false);
+      expect(successMock).not.toHaveBeenCalled();
+      expect(errorMock).not.toHaveBeenCalledWith("Invalid trainer data");
+    });
   });
 });

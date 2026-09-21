@@ -11,6 +11,22 @@ function stored(): unknown {
   return JSON.parse(localStorage.getItem(key) ?? "null");
 }
 
+// a refused write, scoped to the call: an assertion failure must not leave
+// every later write throwing, and vi.restoreAllMocks does not undo a spy on
+// the storage proxy
+function withRefusedWrites<T>(run: () => T): T {
+  const setItem = vi
+    .spyOn(window.localStorage, "setItem")
+    .mockImplementation(() => {
+      throw new Error("exceeded the quota");
+    });
+  try {
+    return run();
+  } finally {
+    setItem.mockRestore();
+  }
+}
+
 describe("useLocalStorage", () => {
   beforeEach(() => {
     localStorage.removeItem(key);
@@ -53,22 +69,24 @@ describe("useLocalStorage", () => {
 
   it("keeps the value it had when the write is rejected", () => {
     createRoot((dispose) => {
-      const [value, setValue] = useLocalStorage({ key, schema, fallback });
+      const [value, setValue, wrote] = useLocalStorage({
+        key,
+        schema,
+        fallback,
+      });
       setValue({ count: 2 });
-      const setItem = vi
-        .spyOn(window.localStorage, "setItem")
-        .mockImplementation(() => {
-          throw new Error("exceeded the quota");
-        });
+      expect(wrote()).toBe(true);
       let calls = 0;
       // the updater still runs, so a caller that collects inside it reports a
       // write that never landed
-      setValue((previous) => {
-        calls++;
-        return { count: previous.count + 1 };
-      });
-      setItem.mockRestore();
+      withRefusedWrites(() =>
+        setValue((previous) => {
+          calls++;
+          return { count: previous.count + 1 };
+        }),
+      );
       expect(calls).toBe(1);
+      expect(wrote()).toBe(false);
       expect(value()).toEqual({ count: 2 });
       expect(stored()).toEqual({ count: 2 });
       dispose();

@@ -17,6 +17,10 @@ export type UseLocalStorageOptions<T> = {
  * SolidJS hook for reactive localStorage with Zod schema validation.
  * Wraps LocalStorageWithSchema in a reactive SolidJS signal.
  *
+ * The third element reads whether the last write landed. A write can be
+ * refused (a full store, a schema failure), and the setter has already run its
+ * updater by then, so a caller that reports the write has to ask.
+ *
  * @example
  * ```tsx
  * const [value, setValue] = useLocalStorage({
@@ -30,7 +34,7 @@ export type UseLocalStorageOptions<T> = {
  */
 export function useLocalStorage<T>(
   options: UseLocalStorageOptions<T>,
-): [Accessor<T>, Setter<T>] {
+): [Accessor<T>, Setter<T>, () => boolean] {
   const { key, schema, fallback, migrate, syncAcrossTabs = true } = options;
 
   // Create the underlying localStorage manager
@@ -44,6 +48,8 @@ export function useLocalStorage<T>(
   // Create signal with initial value from storage
   const [value, setValueInternal] = createSignal(storage.get());
 
+  let wrote = true;
+
   // Custom setter that syncs to localStorage
   const setValue = (newValue: T | ((prev: T) => T)): T => {
     const resolvedValue =
@@ -52,6 +58,7 @@ export function useLocalStorage<T>(
         : newValue;
 
     const success = storage.set(resolvedValue);
+    wrote = success;
     if (success) {
       setValueInternal(() => resolvedValue);
     }
@@ -78,5 +85,5 @@ export function useLocalStorage<T>(
     });
   }
 
-  return [value, setValue as Setter<T>];
+  return [value, setValue as Setter<T>, () => wrote];
 }
